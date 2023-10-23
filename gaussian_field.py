@@ -10,7 +10,7 @@ from scipy.optimize import minimize
 from scipy.spatial.distance import cdist
 
 #Number of dimensions
-ND=2
+ND=3
 
 #Length scale of the grid (in x)
 LSCALE= 20.0
@@ -36,13 +36,15 @@ else:
     Nz_def=None
 
 #Filling factor of the cluster
-cluster_size_factor =0.4 #0.2
+cluster_size_factor =.5 #0.2
 
 #Minimum size of sub-structure
-rmin = LSCALE*2e-2
+rmin = LSCALE*1e-2
+
+rmax =LSCALE*0.2
 
 #Power law index of the correlaton function -- must be greater than 1! 
-alpha_def = 2.0
+alpha_def = 3.0
 
 #The (square) size scale of the cluster
 CLX2 = (cluster_size_factor*LSCALE)**2
@@ -74,11 +76,10 @@ else:
 
 
 def unnormed_pdf(x, f0=100.0, xmin=rmin, xmax = 10.*rmin,  alpha=alpha_def):
-    
     return f0*np.power((x+xmin)/xmin, -alpha) + 0.5*np.tanh((x-xmax)/xmax) + 0.5
     
 #Define the spherically symmetric correlation function
-def correlation_function(x, xmin=rmin,  alpha=alpha_def, xedge=np.sqrt(CLX2), ndim=ND):
+def correlation_function(x, xmin=rmin, xmax=rmax, alpha=alpha_def, xedge=np.sqrt(CLX2), ndim=ND):
     
     
     #This section is written to find a normalisation constant and maximum scale of the structure
@@ -89,40 +90,38 @@ def correlation_function(x, xmin=rmin,  alpha=alpha_def, xedge=np.sqrt(CLX2), nd
     else:
         intfact = 2.*xsp*np.pi
     
-    
     def solve_f0(th):
-        lf0_, xmax_ = th[:]
+        lf0_ = th[0]
         f0_ =10.**lf0_
-        pdf = unnormed_pdf(xsp,f0=f0_, xmin=xmin, xmax = xmax_,  alpha=alpha)
+        pdf = unnormed_pdf(xsp,f0=f0_, xmin=xmin, xmax = xmax,  alpha=alpha)
         #pdf[xsp>xedge] = 0.0
         intpdf = np.trapz(pdf*intfact, xsp)/np.trapz(intfact, xsp)
         return np.absolute(intpdf-1.)/100.0
     
-    xmax_sp = np.linspace(xmin, xedge, 20)
-    f0_sp = np.logspace(0., 4., 1001)
+    lf0_sp = np.logspace(0., 4., 1001)
     
-    fgr, xmgr = np.meshgrid(xmax_sp, f0_sp, indexing='ij')
-    fgf = fgr.flatten()
-    xmf = xmgr.flatten()
 
-    dI = np.zeros(fgf.shape)
-    for i in range(len(fgf)):
-        dI[i] = solve_f0([fgf[i], xmf[i]])
+    dI = np.zeros(lf0_sp.shape)
+    for i in range(len(lf0_sp)):
+        dI[i] = solve_f0([lf0_sp[i]])
     
     imin = np.argmin(dI)
     
-    init_guess = [fgf[imin], xmf[imin]]
+    init_guess = [lf0_sp[imin]]
     
-    res = minimize(solve_f0, init_guess, bounds = [(0., 4.), (xmin, xedge)], tol=1e-6)
+    res = minimize(solve_f0, init_guess, bounds = [(0., 4.)], tol=1e-6)
     f0 = 10.**res['x'][0]
-    xmax = res['x'][1]
     
+    
+    print('f0, xmax:', f0, xmax)
     #We now have the norma
     pdf = unnormed_pdf(xsp,f0=f0, xmin=xmin, xmax = xmax,  alpha=alpha)
     
+    
     #Check pdf has the write properties
     intpdf = np.trapz(pdf*intfact, xsp)/np.trapz(intfact, xsp)
-    if np.absolute(intpdf-1.0)>1e-2:
+    xi_xsp = pdf - 1.0
+    if np.absolute(intpdf-1.0)>5e-2:
         print('Error defining normalisagtion constant in the correlation function')
         print('Integrated value after attempt:', intpdf)
         print('f0 = ', f0)
@@ -141,6 +140,9 @@ def correlation_function(x, xmin=rmin,  alpha=alpha_def, xedge=np.sqrt(CLX2), nd
         plt.xscale('log')
         plt.show()
         exit()
+        
+        
+    
     
     return xi_r
     
@@ -167,7 +169,11 @@ def pmulti_gauss(rgr, mu, invcov):
 def weighted_random_choice(arr, size=10):
     # Flatten the N-D array and calculate the weights
     flattened_arr = arr.flatten()
+    print(np.sum(flattened_arr))
+    
     weights = flattened_arr / np.sum(flattened_arr)
+    
+    print(np.sum(flattened_arr))
     
     # Choose a random index based on the calculated weights
     #We do not replace each cell. This ensures that the normalisation of the field
@@ -260,44 +266,78 @@ def gen_gfield(covmat=def_covmat, mu=def_mu, dims = (Nx_def, Ny_def, Nz_def)):
     phases = np.random.uniform(0., 2.*np.pi, size=ps.shape)
     
     random_field =np.exp(-phases*1j)
+    
+    krand = amplitudes * random_field
 
     # Multiply the random field by the square root of the power spectrum
-    field = np.fft.ifftn(np.fft.ifftshift(amplitudes * random_field), axes=axes).real
+    field = np.fft.ifftn(np.fft.ifftshift(krand), axes=axes).real
+    
+    rsp = np.logspace(np.log(LSCALE)-5., np.log(LSCALE),1000)
+    
+    if Ndim==2:
+        intfact = 2.*np.pi*rsp
+        volume = LSCALE*LSCALE
+    else:
+        intfact = 4.*np.pi*rsp*rsp
+        volume= LSCALE*LSCALE*LSCALE
+    
+    xi_sp = correlation_function(rsp)
+    
+    variance = np.trapz(xi_sp*intfact, rsp)
+    print('Var:', variance)
     
     # Normalize the field
-    mean_value = np.mean(field)
-    std_deviation = np.std(field)
-    field = (field - mean_value) / std_deviation
+    mean_value = np.mean(field.flatten())
+    std_deviation = np.std(field.flatten())
+    
+    field -= mean_value
+    field /= std_deviation
+    
+    
+    #field = (field +lnrho_mean - mean_value)* lnrho_var/ std_deviation
     
     if not cluster_size_factor is None:
         invcov = np.linalg.inv(covmat)
         det = np.linalg.det(covmat)
+        volume = det
         cluster_shape = pmulti_gauss(rmgr, mu, invcov)
-        cluster_shape = np
         factor = np.log(cluster_shape)*SHARPEDGE
-        ctf = plt.contourf(factor)
-        plt.colorbar(ctf)
-        plt.show()
-        factor[factor<-10.] = -10.0
+        factor -= np.amax(factor)
         field +=factor
-    dl = 0.2
-    levels = np.arange(-3., 3.+dl, dl)
-    if Ndim==3:
-        #fieldplt = np.sum(field, axis=-1)
-        fieldplt = field[:,:, Nz//2]
-    else:
-        fieldplt=field
-    
-    return rmgr, field
+        
+    return rmgr, field, variance, volume
 
 
-def draw_stars(rgr, field, Nstars=10000, normfactor=4.*np.pi*np.pi):
+def draw_stars(rgr, field, Nstars=10000, variance_norm=1.0, volume=1.0):
     
     
     #It doesn't matter what operation we do to the field as long as it is
     #(a) monotonic and (b) gives a large enough spread so that we pick each cell
     #in order of probability. Should just change the selection function to do this directly...
-    istars = weighted_random_choice(np.exp(normfactor*field), size=Nstars)
+    std_log = np.std(field.flatten())
+    mean_log = np.mean(field.flatten())
+    
+    mean = Nstars/volume
+    
+    variance = mean*mean*variance_norm
+    print('new variance',variance)
+    std_log_new = np.log(1.+variance/mean/mean)
+    
+    mean_log_new = np.log(mean*mean/np.sqrt(mean*mean+variance))
+    
+    
+    field -= mean_log
+    
+    field /= std_log
+    field *= std_log_new
+    
+    field += mean_log_new
+    
+    density = np.exp(field)
+    density[~np.isfinite(density)] = 0.0
+    
+    
+    istars = weighted_random_choice(density, size=Nstars)
     
     levels = np.linspace(-5., -1.)
     
@@ -342,6 +382,7 @@ def plot_corrfunc(rpts, rgr):
 
     dr = cdist(rpts.T, rpts.T, 'euclidean')
     
+    
     dr = dr[dr>0]
 
     nbins = 12
@@ -365,25 +406,29 @@ def plot_corrfunc(rpts, rgr):
     # Compute the 2PCF at the specified distances
     xvals = binsr[:-1]+binsr[1:]
     xvals *= 0.5 #np.logspace(np.log10(drgrid), np.log10(Lx), Nx)
-    xi_values =correlation_function(xvals) #transform_PS2CF(xvals, kvals, P_k)
-    
+    xi_values = correlation_function(xvals) #transform_PS2CF(xvals, kvals, P_k)
+    plxi_values = xvals**-alpha_def 
+    #Renormalise?
+    xi_values *= corr[len(corr)//2]/xi_values[len(corr)//2]
+    plxi_values *= corr[len(corr)//2]/plxi_values[len(corr)//2]
 
     fig, ax = plt.subplots(figsize=(6., 4.))
 
     # Use 'linestyle' parameter to set the style for the data points
     #plt.errorbar(binsr[:-1], corr , yerr=dcorr, linestyle='None', fmt='o', color='b', markerfacecolor='w',markersize=4, markeredgecolor='b', label='Simulated cluster')
-    plt.scatter(binsr[:-1], corr+1., marker='o', color='w', edgecolor='b')
-    plt.plot(xvals,xi_values+1., linewidth=1, color='k',linestyle='dotted', label='Analytic PDF estimate')
+    plt.scatter(binsr[:-1], corr, marker='o', color='w', edgecolor='b')
+    plt.plot(xvals,xi_values, linewidth=1, color='k',linestyle='dotted', label='Analytic PDF estimate')
+    plt.plot(xvals,plxi_values, linewidth=1, color='k',linestyle='dashed', label='Power-law PDF estimate')
     #plt.axhline(1., color='r', label='Uniform distribution', linewidth=0.5, linestyle='dashed')
     plt.axvline(drgrid, color='purple', linestyle='dotted', label='Grid cell size')
     plt.axvline(rmin, color='purple', linestyle='dashed', label='Min r')
-    plt.axvline(cluster_size_factor*LSCALE, color='purple', linestyle='solid', label='Max r')
+    plt.axvline(rmax, color='purple', linestyle='solid', label='Max r')
     plt.xscale('log')
     plt.yscale('log')
 
     # Add labels to the plot
     plt.xlabel('Separation between pairs: $d$ [pc]')
-    plt.ylabel('Offset two-point correlation function $(1+\\xi)$')
+    plt.ylabel('Correlation function $\\xi$')
 
     # Show axis ticks on all sides
     ax.yaxis.set_ticks_position('both')
@@ -398,6 +443,6 @@ def plot_corrfunc(rpts, rgr):
 
 if __name__=='__main__':
     
-    rgr, field = gen_gfield()
-    rst = draw_stars(rgr, field, Nstars=3000)
+    rgr, field, variance, volume = gen_gfield()
+    rst = draw_stars(rgr, field, Nstars=3000, variance_norm=variance, volume=volume)
     plot_corrfunc(rst, rgr)
