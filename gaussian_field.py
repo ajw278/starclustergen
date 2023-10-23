@@ -36,21 +36,21 @@ else:
     Nz_def=None
 
 #Filling factor of the cluster
-cluster_size_factor =.5 #0.2
+cluster_size_factor =.7 #0.2
 
 #Minimum size of sub-structure
 rmin = LSCALE*1e-2
 
-rmax =LSCALE*0.2
+rmax =LSCALE*0.4
 
 #Power law index of the correlaton function -- must be greater than 1! 
-alpha_def = 3.0
+alpha_def = 2.0
 
 #The (square) size scale of the cluster
 CLX2 = (cluster_size_factor*LSCALE)**2
 
 #Thi parameter determines how sharp the edges of the cluster are
-SHARPEDGE=5.0
+SHARPEDGE=6.0
 
 #Grid cell size (in x)
 drgrid = LSCALE/Nx_def
@@ -98,7 +98,7 @@ def correlation_function(x, xmin=rmin, xmax=rmax, alpha=alpha_def, xedge=np.sqrt
         intpdf = np.trapz(pdf*intfact, xsp)/np.trapz(intfact, xsp)
         return np.absolute(intpdf-1.)/100.0
     
-    lf0_sp = np.logspace(0., 4., 1001)
+    lf0_sp = np.logspace(0., 6., 1001)
     
 
     dI = np.zeros(lf0_sp.shape)
@@ -109,7 +109,7 @@ def correlation_function(x, xmin=rmin, xmax=rmax, alpha=alpha_def, xedge=np.sqrt
     
     init_guess = [lf0_sp[imin]]
     
-    res = minimize(solve_f0, init_guess, bounds = [(0., 4.)], tol=1e-6)
+    res = minimize(solve_f0, init_guess, bounds = [(0., 6.)], tol=1e-6)
     f0 = 10.**res['x'][0]
     
     
@@ -444,5 +444,5 @@ def plot_corrfunc(rpts, rgr):
 if __name__=='__main__':
     
     rgr, field, variance, volume = gen_gfield()
-    rst = draw_stars(rgr, field, Nstars=3000, variance_norm=variance, volume=volume)
+    rst = draw_stars(rgr, field, Nstars=2000, variance_norm=variance, volume=volume)
     plot_corrfunc(rst, rgr)
