@@ -259,7 +259,7 @@ if __name__=='__main__':
     binsep = distance*deg2rad*(10.**-1.5)/1.5
     Lbox  = 50.0
     lNbox_est = math.log2(Lbox/binsep)
-    Nbox = int(2.**(int(lNbox_est)-1))
+    Nbox = int(2.**(int(lNbox_est)+1))
     print(Nbox)
     ndim=3
     if ndim==2:
