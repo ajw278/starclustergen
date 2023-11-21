@@ -62,7 +62,7 @@ def pmulti_gauss(rgr, mu, invcov):
     ndim = rgr.shape[0]
     
     # Calculate the difference between rgr and mu for all elements
-    dx = rgr - mu[:, *(np.newaxis,)*ndim]  # Broadcast 'mu' to match the shape of 'rgr'
+    dx = rgr - mu[(slice(None),) + (np.newaxis,) * ndim]  # Broadcast 'mu' to match the shape of 'rgr'
 
     # Calculate the quadratic form (dusq) element-wise
     dx_sig = np.einsum('ij...,jk...->ik...', invcov, dx)
