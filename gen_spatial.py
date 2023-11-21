@@ -7,17 +7,17 @@ from astroML.correlation import bootstrap_two_point
 
 plt.rc('text', usetex=True)
 
-ND = 3
+ND = 2
 #15 pc length scale (root) 
-LSCALE=15.0
+LSCALE=10.0
 LSCALE2= LSCALE*LSCALE
 
 NSTARS = 500
 
 #Power-law index for correlation function
-def_p =1.5
-def_dmin = 0.1
-def_dmax = LSCALE
+def_p =1.2
+def_dmin = 0.05
+def_dmax = 2.*LSCALE
 def_d0 = 1.0
 
 
@@ -26,13 +26,13 @@ if ND==3:
     def_covmat = np.array([[LSCALE2, 0.0, 0.0],[0.0, LSCALE2, 0.0], [0.0, 0.0, LSCALE2]])
     def_mu = np.array([0.0,0.,0.])
 else:
-    def_covmat = np.array([[LSCALE2, 0.0],[0.0, LSCALE2]])
+    def_covmat = np.array([[LSCALE2, LSCALE2*0.1],[LSCALE2*0.1, LSCALE2]])
     def_mu = np.array([0.0,0.])
 
 
 #Functional form of the 2-point correlation we try to reproduce
 def twopoint_corr(d, dmin, dmax, p=def_p, d0=1.0):
-    return ((d+dmin)**-p)*np.exp(-d/dmax)
+    return ((d+dmin)**-p)*np.exp(-(d/dmax)**2)
 
 #Distance calculation between a position and a grid of positions (will update for Cov)
 def dist_metric_gr(r, rgr, density_func=None):
@@ -83,7 +83,7 @@ def find_nneighbours( rall, istar, NN=5):
 def draw_corrfunc(rpts, istar, dmin=0.05, Ndraw=1, dmax=5.0, p=2., d0=1.0, covmat=None):
     
     #Create an array of possible distances to select from
-    dsp = np.logspace(np.log10(dmin)-2.0, np.log10(dmax), 80)
+    dsp = np.logspace(np.log10(dmin)-2.0, np.log10(dmax), 160)
     
     #Offset by a small random factor so that we're not always choosing the same distances
     dfact = np.median(dsp[1:]/dsp[:-1])
@@ -140,7 +140,7 @@ def draw_corrfunc(rpts, istar, dmin=0.05, Ndraw=1, dmax=5.0, p=2., d0=1.0, covma
   
   
     #We need to take into account the other neighbouring stars that change the probability 
-    ineigh = find_nneighbours(rpts, istar, NN=10)
+    ineigh = find_nneighbours(rpts, istar, NN=15)
     for iN in ineigh:
         drN =  dist_metric_gr(rpts[:, iN], rgcart)
         pN = twopoint_corr(drN+dmin, dmin, dmax, p=def_p, d0=1.0)
@@ -216,12 +216,13 @@ def initialise_grid(x, y, z=None):
 def pmulti_gauss(rgr, mu, invcov):
     ndim = rgr.shape[0]
     
+    print(rgr.shape, mu.shape)
     # Calculate the difference between rgr and mu for all elements
     dx = rgr - mu[:, *(np.newaxis,)*ndim]  # Broadcast 'mu' to match the shape of 'rgr'
 
     # Calculate the quadratic form (dusq) element-wise
     dx_sig = np.einsum('ij...,jk...->ik...', invcov, dx)
-    dusq = np.einsum('ij...,ij...->j...', dx_sig, dx)
+    dusq = np.einsum('ij...,ij...->j...', dx,  dx_sig)
   
     # Calculate the prefactor
     pref = (np.pi / 2.)**(-ndim / 2.) * np.sqrt(np.linalg.det(invcov))
@@ -252,7 +253,7 @@ def random_dr(rpts, dr):
     return rpts+ (0.5-np.random.uniform(size=rpts.shape))*dr
 
 def initialise_gausspos(Nnests, covmat = def_covmat,mu=def_mu, rmaxfact= 4.0):
-    ndim = mu.shape[0]
+    ndim = len(mu)
     rmax = rmaxfact*(np.linalg.det(covmat)**(1./2./ndim))
     x = np.linspace(-rmax, rmax, 200)
     y = np.linspace(-rmax, rmax, 201)
@@ -318,14 +319,20 @@ def gen_positions(rinit, Ntot,  Nstep=10, dmin=0.01, dmax=20.0, p=def_p, d0=1.0)
 def plot_gauss(covmat= def_covmat, mu=def_mu):
     x = np.linspace(-10., 10.0, 50)
     y = np.linspace(-10., 10., 51)
-    z = np.linspace(-10., 10., 52)
+    z=None
+    ndim =  covmat.shape[0]
+    if ndim==3:
+        z = np.linspace(-10., 10., 52)
     
     rgr = initialise_grid(x, y, z=z)
     invcov = np.linalg.inv(covmat)
     
     pg = pmulti_gauss(rgr, mu, invcov)
-    
-    ctf = plt.contourf(x, y, pg[:, :, int(len(z)/2)].T, levels=10, cmap='viridis', alpha=0.4)
+    if ndim==3:
+        ctf = plt.contourf(x, y, pg[:, :, int(len(z)/2)].T, levels=10, cmap='viridis', alpha=0.4)
+    else:
+        ctf = plt.contourf(x, y, pg[:, :].T, levels=10, cmap='viridis', alpha=0.4)
+        
     plt.show()
     
 def plot_corrfunc(rpts, dmin=def_dmin, dmax=def_dmax, p=def_p, d0=def_d0):
@@ -372,6 +379,7 @@ def plot_corrfunc(rpts, dmin=def_dmin, dmax=def_dmax, p=def_p, d0=def_d0):
           
     
 if __name__=='__main__':
+    plot_gauss()
     #Initialise the 'seed' positions, or the number of nests - I've chosen 20 like Taurus
     rinit, rgr = initialise_gausspos(20)
     

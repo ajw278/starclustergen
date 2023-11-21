@@ -8,62 +8,45 @@ from astroML.correlation import two_point
 from scipy.signal import windows
 from scipy.optimize import minimize
 from scipy.spatial.distance import cdist
+from powerbox import get_power
+import powerbox as pbox
 
 #Number of dimensions
 ND=3
 
 #Length scale of the grid (in x)
-LSCALE= 20.0
+Lscale= 50.0
 
 #Number of grid points in x, y
-Nx_def = 201
-Ny_def = 201
+Ngrid = 200
+
+
+alpha_def = -0.8
+
+
+#Stetch the structure as well as the cluster shape? (Not implemented)
+struct_stretch = True
+
+cluster_size_factor =0.5 #0.2
+
+
+#The (square) size scale of the cluster
+CLX2 = (cluster_size_factor*Lscale)**2
+
+#Thi parameter determines how sharp the edges of the cluster are
+SHARPEDGE=10.0
+
 
 #Covariance of 2 dimensions, and flattening in y
 covxy = 0.
 xyrat = 1.
 
-#Stetch the structure as well as the cluster shape? (Not implemented)
-struct_stretch = True
-
 #Third dimension if needed
 if ND==3:
-    Nz_def = 201
     covxz = 0.0
     covyz = 0.0
     xzrat = 1.0
-else:
-    Nz_def=None
 
-#Filling factor of the cluster
-cluster_size_factor =.7 #0.2
-
-#Minimum size of sub-structure
-rmin = LSCALE*1e-2
-
-rmax =LSCALE*0.4
-
-#Power law index of the correlaton function -- must be greater than 1! 
-alpha_def = 2.0
-
-#The (square) size scale of the cluster
-CLX2 = (cluster_size_factor*LSCALE)**2
-
-#Thi parameter determines how sharp the edges of the cluster are
-SHARPEDGE=6.0
-
-#Grid cell size (in x)
-drgrid = LSCALE/Nx_def
-
-#Is the grid fine enough to resolve structure?
-if rmin<5.*drgrid:
-    print('Warning: minimum size scale of correlated structure \
-    should be much larger than the grid cell size')
-    print('Grid cell size (x, y):', LSCALE/Nx_def, LSCALE/Ny_def)
-    print('Mininum correlation scale:',  rmin)
-
-
-    
 #Define the covariance matrix and mean position of the cluster
 if ND==3:
     def_covmat = np.array([[CLX2, covxy*xyrat*CLX2, covxz*xzrat*CLX2],\
@@ -74,78 +57,6 @@ else:
     def_covmat = np.array([[CLX2, covxy*xyrat*CLX2],[covxy*xyrat*CLX2, xyrat*xyrat*CLX2]])
     def_mu = np.array([0.0,0.])
 
-
-def unnormed_pdf(x, f0=100.0, xmin=rmin, xmax = 10.*rmin,  alpha=alpha_def):
-    return f0*np.power((x+xmin)/xmin, -alpha) + 0.5*np.tanh((x-xmax)/xmax) + 0.5
-    
-#Define the spherically symmetric correlation function
-def correlation_function(x, xmin=rmin, xmax=rmax, alpha=alpha_def, xedge=np.sqrt(CLX2), ndim=ND):
-    
-    
-    #This section is written to find a normalisation constant and maximum scale of the structure
-    #we need this because otherwise the correlation function doesn't have the correct properties
-    xsp = np.linspace(0., max(np.amax(x), xedge), 10000)
-    if ndim == 3:
-        intfact = 4.*xsp*xsp*np.pi
-    else:
-        intfact = 2.*xsp*np.pi
-    
-    def solve_f0(th):
-        lf0_ = th[0]
-        f0_ =10.**lf0_
-        pdf = unnormed_pdf(xsp,f0=f0_, xmin=xmin, xmax = xmax,  alpha=alpha)
-        #pdf[xsp>xedge] = 0.0
-        intpdf = np.trapz(pdf*intfact, xsp)/np.trapz(intfact, xsp)
-        return np.absolute(intpdf-1.)/100.0
-    
-    lf0_sp = np.logspace(0., 6., 1001)
-    
-
-    dI = np.zeros(lf0_sp.shape)
-    for i in range(len(lf0_sp)):
-        dI[i] = solve_f0([lf0_sp[i]])
-    
-    imin = np.argmin(dI)
-    
-    init_guess = [lf0_sp[imin]]
-    
-    res = minimize(solve_f0, init_guess, bounds = [(0., 6.)], tol=1e-6)
-    f0 = 10.**res['x'][0]
-    
-    
-    print('f0, xmax:', f0, xmax)
-    #We now have the norma
-    pdf = unnormed_pdf(xsp,f0=f0, xmin=xmin, xmax = xmax,  alpha=alpha)
-    
-    
-    #Check pdf has the write properties
-    intpdf = np.trapz(pdf*intfact, xsp)/np.trapz(intfact, xsp)
-    xi_xsp = pdf - 1.0
-    if np.absolute(intpdf-1.0)>5e-2:
-        print('Error defining normalisagtion constant in the correlation function')
-        print('Integrated value after attempt:', intpdf)
-        print('f0 = ', f0)
-        exit()
-    
-    #Interpolate to the given grid points
-    pdf_xv = np.interp(x, xsp, pdf)
-    
-    #Subtract one to give the correlation function from pdf
-    xi_r = pdf_xv -1.0
-    
-    #Check the correlation function doesn't go below one -shouldn't! 
-    if np.any(xi_r<-1.):
-        print('Error: parameters chosen such that xi_r goes below -1')
-        plt.scatter(x.flatten()[::10], xi_r.flatten()[::10])
-        plt.xscale('log')
-        plt.show()
-        exit()
-        
-        
-    
-    
-    return xi_r
-    
 #Multi-dimensional Gaussian pdf values with convariance
 def pmulti_gauss(rgr, mu, invcov):
     ndim = rgr.shape[0]
@@ -174,11 +85,11 @@ def weighted_random_choice(arr, size=10):
     weights = flattened_arr / np.sum(flattened_arr)
     
     print(np.sum(flattened_arr))
-    
     # Choose a random index based on the calculated weights
     #We do not replace each cell. This ensures that the normalisation of the field
     #is not so important as long as the grid cells are sufficiently small
-    index = np.random.choice(len(flattened_arr), p=weights, size=size, replace=False)
+    index = np.random.choice(len(flattened_arr), p=weights, size=size, replace=True)
+    
     
     # Convert the 1D index back to N-D indices
     indices = np.unravel_index(index, arr.shape)
@@ -203,138 +114,114 @@ def rnorm_cov(rgr, covmat):
     
     return np.linalg.norm(rgr, axis=0)
 
+def Wfunc(u):
+    return (3/u/u/u)*(np.sin(u)-u*np.cos(u))
+    
+def integral_ps_old(alpha_ps, Lbox, Ndim, kmin, kmax,  scale=1.0):
+    ksp = np.logspace(np.log10(kmin), np.log10(kmax), 100 )
+    factor = (1./2./np.pi)
+    intfact = np.power(ksp, Ndim-1)
+    sigR2 =  scale*(1./norm)*(np.trapz(Pk*intfact, ksp))
+    return sigR2
+
+def integral_ps_3D(alpha_ps, Lbox, Nbox, scale=1.0):
+    print(Nbox, Nbox/2, Nbox//2)
+    kbox = np.arange(-Nbox/2, Nbox/2, Nbox//2 )/Lbox
+    kbox3 = np.asarray(np.meshgrid(kbox, kbox, kbox, indexing='ij'))
+    
+    kmag = np.linalg.norm(kbox3, axis=0)
+    
+    dv = kbox[1]-kbox[0]
+    dv3 = dv*dv*dv
+    
+    Pk = scale*kmag**alpha_ps
+    Pk[kmag==0] = 0.0
+    
+    sigR2 = np.sum(Pk*dv3) #/np.power(2.*np.pi, 3)
+    
+    return sigR2
+    
+
+def lognormal(x, mu, sigma):
+    return (1./x/sigma/np.sqrt(2.*np.pi))*np.exp(-(np.log(x)-mu)**2/2./sigma/sigma)
+
 #Generate a Gaussian random field with covariance
-def gen_gfield(covmat=def_covmat, mu=def_mu, dims = (Nx_def, Ny_def, Nz_def)):
-
-    Ndim = len(dims)
-    if dims[-1] is None:
-        Ndim-=1
-
-    # Field size and grid
-    Nx = dims[0]
-    Ny = dims[1]
-    Nz = None
-    if Ndim==3:
-        Nz = dims[2]
-
-    dL = LSCALE/float(Nx)  # Square size
-
-    # Create a grid of coordinates
-    rcoords = [np.linspace(-1.,1., int(dims[i]))*(dL*0.5*float(dims[i])) for i in range(Ndim)]
-    rmgr = np.array(np.meshgrid(*rcoords, indexing='ij'))
-
+def gen_gfield(covmat=def_covmat, mu=def_mu, Ndim=ND, Nbox =Ngrid , Lbox=Lscale, Pk_norm=10.0, Pk_index=-1.5, sharp_edge=SHARPEDGE,plot=True, seed=None):
     
-    #Set rnorm
-    if struct_stretch:
-        rnorm = rnorm_cov(rmgr, covmat)
-        """rnorm_alt = np.linalg.norm(rmgr, axis=0)
-        levels = np.linspace(0., LSCALE, 10)
+    Ndim = covmat.shape[0]
+    dLbox = Lbox/Nbox
+    
+    psfunc = lambda k: Pk_norm*k**Pk_index
+    
+    lnpb = pbox.LogNormalPowerBox(
+        N=Nbox,                     # Number of grid-points in the box
+        dim=Ndim,                     # 2D box
+        pk = psfunc, # The power-spectrum
+        boxlength = Lbox,           # Size of the box (sets the units of k in pk)
+        seed = seed            # Fix the seed to get the same 
+    )
+   
+   
+                                   
+    delta_x = lnpb.delta_x()
+    
+    """ntspect = integral_ps_3D(alpha_ps, Lbox, Nbox, factor)
+    print('SigR2', np.std(delta_x)**2, np.std(1.+delta_x)**2)
+    print('Scale:', intspect, np.var(delta_x))
+    print('Quantities:', Nbox*Nbox*Nbox, Lbox*Lbox*Lbox, np.power(2.*np.pi, 3))
+    
+    bins = np.linspace(0., 10.0, 20)
+    weights = (1.+delta_x).flatten()""" 
+                             
+    args = [lnpb.x] * lnpb.dim
+    rmgr = np.asarray(np.meshgrid(*args, indexing="ij"))
+    
+    print(dir(lnpb))
+    
+    density_ = 1.+delta_x
+
+    invcov = np.linalg.inv(covmat)
+    det = np.linalg.det(covmat)
+    volume = det
+    cluster_shape = pmulti_gauss(rmgr, mu, invcov)
+    
+    density = density_*(cluster_shape**sharp_edge)
+    density /= np.amax(density)
+    
+    if plot:
         if Ndim==3:
-            plt.contourf(rnorm[:,:,Nz//2], levels=levels)
-            plt.contour(rnorm_alt[:,:,Nz//2], levels=levels, colors='r')
+            
+            fig = plt.figure()
+
+            # Scatter plot with color based on density
+            ctf = plt.contourf(rmgr[0, :, :, 0], rmgr[1, :, :, 0], np.log10(np.sum(density_[:,:], axis=0)).T)
+
+            # Add a color bar
+            plt.colorbar(ctf)
+
+            # Show the plot
+            plt.show()
+            
+            fig = plt.figure()
+
+            # Scatter plot with color based on density
+            ctf = plt.contourf(rmgr[0, :, :, 0], rmgr[1, :, :, 0], np.log10(np.sum(density[:,:], axis=0)).T, levels=np.arange(-5., 0., 0.5))
+
+            # Add a color bar
+            plt.colorbar(ctf)
+
+            # Show the plot
+            plt.show()
         else:
-            plt.contourf(rnorm, levels=levels)
-            plt.contour(rnorm_alt, levels=levels, colors='r')
-        plt.show()"""
-    else:
-        rnorm = np.linalg.norm(rmgr, axis=0)
-    
-    
-    corr = correlation_function(rnorm/2./np.pi, xmin=rmin,alpha=alpha_def)
-    
-    
-    if Ndim==3:
-        corr_plt = np.sum(corr, axis=-1)
-        xplt = rmgr[0, :, :, -1]
-        yplt = rmgr[1, :, :, -1]
-    else:
-        corr_plt = corr
-        xplt = rmgr[0]
-        yplt = rmgr[1]
-    
-    axes = [i for i in range(Ndim)]
-    
-    # Compute the 2D power spectrum using the 2D Fourier transform
-    ps = np.fft.fftshift(np.fft.fftn(corr, axes=axes))
-    
-    
-    amplitudes = np.sqrt(ps)
-    
-    # Generate random complex values from a Gaussian distribution
-    # with the same shape as the power spectrum
-    #random_field = np.random.normal(0, 1, size=ps.shape) + 1j * np.random.normal(0, 1, size=ps.shape)
-    phases = np.random.uniform(0., 2.*np.pi, size=ps.shape)
-    
-    random_field =np.exp(-phases*1j)
-    
-    krand = amplitudes * random_field
 
-    # Multiply the random field by the square root of the power spectrum
-    field = np.fft.ifftn(np.fft.ifftshift(krand), axes=axes).real
-    
-    rsp = np.logspace(np.log(LSCALE)-5., np.log(LSCALE),1000)
-    
-    if Ndim==2:
-        intfact = 2.*np.pi*rsp
-        volume = LSCALE*LSCALE
-    else:
-        intfact = 4.*np.pi*rsp*rsp
-        volume= LSCALE*LSCALE*LSCALE
-    
-    xi_sp = correlation_function(rsp)
-    
-    variance = np.trapz(xi_sp*intfact, rsp)
-    print('Var:', variance)
-    
-    # Normalize the field
-    mean_value = np.mean(field.flatten())
-    std_deviation = np.std(field.flatten())
-    
-    field -= mean_value
-    field /= std_deviation
-    
-    
-    #field = (field +lnrho_mean - mean_value)* lnrho_var/ std_deviation
-    
-    if not cluster_size_factor is None:
-        invcov = np.linalg.inv(covmat)
-        det = np.linalg.det(covmat)
-        volume = det
-        cluster_shape = pmulti_gauss(rmgr, mu, invcov)
-        factor = np.log(cluster_shape)*SHARPEDGE
-        factor -= np.amax(factor)
-        field +=factor
-        
-    return rmgr, field, variance, volume
+            plt.contourf(rmgr[0], rmgr[1], np.log10(density).T)
+            plt.colorbar()
+            plt.show()
+
+    return rmgr, density, psfunc
 
 
-def draw_stars(rgr, field, Nstars=10000, variance_norm=1.0, volume=1.0):
-    
-    
-    #It doesn't matter what operation we do to the field as long as it is
-    #(a) monotonic and (b) gives a large enough spread so that we pick each cell
-    #in order of probability. Should just change the selection function to do this directly...
-    std_log = np.std(field.flatten())
-    mean_log = np.mean(field.flatten())
-    
-    mean = Nstars/volume
-    
-    variance = mean*mean*variance_norm
-    print('new variance',variance)
-    std_log_new = np.log(1.+variance/mean/mean)
-    
-    mean_log_new = np.log(mean*mean/np.sqrt(mean*mean+variance))
-    
-    
-    field -= mean_log
-    
-    field /= std_log
-    field *= std_log_new
-    
-    field += mean_log_new
-    
-    density = np.exp(field)
-    density[~np.isfinite(density)] = 0.0
+def draw_stars(rgr, density, Nstars=500, plot=True, Pkfunc=None):
     
     
     istars = weighted_random_choice(density, size=Nstars)
@@ -348,30 +235,66 @@ def draw_stars(rgr, field, Nstars=10000, variance_norm=1.0, volume=1.0):
     drstars = np.array([drgr[idim][istars] for idim in range(ndim)])
     rst = random_dr(rstars, drstars)
     
-    if ndim==3:
-        #If 3D, sum over the y-dimension
-        field_plt = np.sum(field, axis=2)
-        xplt = rgr[0, :, -1, :]
-        yplt = rgr[2, :, -1, :]
-    else:
-        field_plt = field
-        xplt = rgr[0]
-        yplt = rgr[1]    
+    def inv_Abel(F, R):
+        f = np.zeros(R.shape)
+        dFdR  = np.gradient(F, R)
+
+        for i, R_ in enumerate(R):
+            iR = R>R_
+            f[i] = -np.trapz(dFdR[iR]/np.sqrt(R[iR]**2-R_**2), R[iR])
+
+        return f/np.pi
+
+    Rpc = np.array([rst[0], rst[1]])
+    # The number of grid points are also required when passing the samples
+    print(Rpc)
     
+    print(Rpc.T.shape, rst.T.shape)
+    p_k_samples, bins_samples = get_power(Rpc.T,50.0,N=30, b=1.0)
+    p_k_samples3D, bins_samples3D = get_power(rst.T,50.0,N=30, b=1.0)
     
-    plt.contourf(xplt, yplt, field_plt, cmap='viridis', alpha=0.5)
-    plt.scatter(rst[0], rst[1], color='r', s=1)
+    print(bins_samples)
+    #plt.plot(bins_samples, 30.0*bins_samples**-1.6,label="Guess Power")
+    plt.plot(bins_samples, p_k_samples, marker='o', label="Normal Sample Power")
+
     
-    
-    rgunx = np.unique(rgr[0].flatten())
-    rguny = np.unique(rgr[1].flatten())
-    for rgux in rgunx:
-        plt.axvline(rgux, color='k', linewidth=0.01)
-    for rguy in rguny:
-        plt.axhline(rguy, color='k', linewidth=0.01)
-    plt.colorbar()
+    #plt.plot(bins_samples, inv_Abel(p_k_samples, bins_samples), marker='s', label='Inverse Abel')
+    plt.plot(bins_samples3D, p_k_samples3D, marker='s', label='3D True')
+    if not Pkfunc is None:
+        plt.plot(bins_samples3D, Pkfunc(bins_samples3D),label="Input Power")
+
+    plt.legend()
+    plt.xscale('log')
+    plt.yscale('log')
     plt.show()
+
     
+    if plot:
+        if ndim==3:
+
+            #If 3D, sum over the y-dimension
+            field_plt = np.sum(density, axis=-1)
+            xplt = rgr[0, :, :, -1]
+            yplt = rgr[1, :,  :, -1]
+        else:
+            field_plt = density
+            xplt = rgr[0]
+            yplt = rgr[1]    
+
+
+        ctf = plt.contourf(xplt, yplt, np.log10(field_plt), cmap='viridis', levels=np.arange(-38., -34, 0.5))
+        plt.scatter(rst[0], rst[1], color='r', s=1, alpha=0.3)
+
+
+        rgunx = np.unique(rgr[0].flatten())
+        rguny = np.unique(rgr[1].flatten())
+        for rgux in rgunx:
+            plt.axvline(rgux, color='k', linewidth=0.01)
+        for rguy in rguny:
+            plt.axhline(rguy, color='k', linewidth=0.01)
+        plt.colorbar(ctf)
+        plt.show()
+
     return rst
 
 
@@ -381,8 +304,31 @@ def plot_corrfunc(rpts, rgr):
     rpg = np.array([np.meshgrid(rpts[idim], rpts[idim], indexing='ij') for idim in range(Ndim)])
 
     dr = cdist(rpts.T, rpts.T, 'euclidean')
+    dr = dr[np.triu_indices(len(rpts[0]), k=1)]
     
+    binsr = np.logspace(-1.2, 2, 35)
+    if Ndim==2:
+        weights = 1./(2.*np.pi*dr)
+    else:
+        weights = 1./(4.*np.pi*dr*dr)
+        
+    gamma = alpha_def+3.
     
+    xsp  = np.logspace(-1.2, 2, 1000)
+    unn = 10.*np.power(xsp, -gamma)
+    unn /= np.trapz(unn*xsp*2.*np.pi, xsp)
+    #plt.plot(xsp, unn)
+    plt.hist(dr, bins=binsr, edgecolor='k', alpha=0.5, weights=weights, density=True)
+    plt.xlabel('Angular separation: $\Delta \\theta$ [deg]')
+    plt.ylabel('Probability density function: $\mathrm{d}P /\mathrm{d} A = \\tilde{f}(R)$')
+    plt.xscale('log')
+    plt.yscale('log')
+    plt.ylim([3e-4, 1e2])
+    plt.xlim([2e-2, 1e2])
+    plt.grid(True)
+    # Display the histogram
+    plt.show()
+
     dr = dr[dr>0]
 
     nbins = 12
@@ -406,18 +352,15 @@ def plot_corrfunc(rpts, rgr):
     # Compute the 2PCF at the specified distances
     xvals = binsr[:-1]+binsr[1:]
     xvals *= 0.5 #np.logspace(np.log10(drgrid), np.log10(Lx), Nx)
-    xi_values = correlation_function(xvals) #transform_PS2CF(xvals, kvals, P_k)
     plxi_values = xvals**-alpha_def 
     #Renormalise?
-    xi_values *= corr[len(corr)//2]/xi_values[len(corr)//2]
-    plxi_values *= corr[len(corr)//2]/plxi_values[len(corr)//2]
+    plxi_values *= np.absolute(corr[len(corr)//2]/plxi_values[len(corr)//2])
 
     fig, ax = plt.subplots(figsize=(6., 4.))
 
     # Use 'linestyle' parameter to set the style for the data points
     #plt.errorbar(binsr[:-1], corr , yerr=dcorr, linestyle='None', fmt='o', color='b', markerfacecolor='w',markersize=4, markeredgecolor='b', label='Simulated cluster')
     plt.scatter(binsr[:-1], corr, marker='o', color='w', edgecolor='b')
-    plt.plot(xvals,xi_values, linewidth=1, color='k',linestyle='dotted', label='Analytic PDF estimate')
     plt.plot(xvals,plxi_values, linewidth=1, color='k',linestyle='dashed', label='Power-law PDF estimate')
     #plt.axhline(1., color='r', label='Uniform distribution', linewidth=0.5, linestyle='dashed')
     plt.axvline(drgrid, color='purple', linestyle='dotted', label='Grid cell size')
@@ -425,6 +368,7 @@ def plot_corrfunc(rpts, rgr):
     plt.axvline(rmax, color='purple', linestyle='solid', label='Max r')
     plt.xscale('log')
     plt.yscale('log')
+
 
     # Add labels to the plot
     plt.xlabel('Separation between pairs: $d$ [pc]')
@@ -441,8 +385,19 @@ def plot_corrfunc(rpts, rgr):
     plt.legend()
     plt.show()
 
+def build_cluster(Nstars=500, Nbox=Ngrid,  Lbox=Lscale, Rcl = cluster_size_factor*Lscale, \
+                  normed_covmat=def_covmat, sharp_edge=10.0, mu=def_mu, Pk_norm=10.0, Pk_index=-1.5, seed=None):
+    
+    ndim = normed_covmat.shape[0]
+    normed_covmat /= np.linalg.det(normed_covmat)**(1./ndim)
+    covmat = normed_covmat*(Rcl)**2.
+    rgr, field, pkfunc = gen_gfield(covmat=covmat, mu=mu, Ndim=ndim, Nbox =Nbox, Pk_norm=Pk_norm, Pk_index=Pk_index, sharp_edge=sharp_edge, seed=seed)
+    rst = draw_stars(rgr, field, Nstars=Nstars, Pkfunc=pkfunc)
+    return rst
+    
+    
 if __name__=='__main__':
     
-    rgr, field, variance, volume = gen_gfield()
-    rst = draw_stars(rgr, field, Nstars=2000, variance_norm=variance, volume=volume)
+    rgr, field = gen_gfield()
+    rst = draw_stars(rgr, field, Nstars=2000)
     plot_corrfunc(rst, rgr)
