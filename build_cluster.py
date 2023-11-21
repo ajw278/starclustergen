@@ -257,9 +257,10 @@ def calc_pl(L1, L2, xi1, xi2):
 if __name__=='__main__':
     
     binsep = distance*deg2rad*(10.**-1.5)/1.5
-    Lbox  = 50.0
+    Lbox  = 80.0
     lNbox_est = math.log2(Lbox/binsep)
-    Nbox = int(2.**(int(lNbox_est)+1))
+    Nbox = int(2.**(int(lNbox_est)-2))
+    Nbox = 350
     print(Nbox)
     ndim=3
     if ndim==2:
@@ -270,15 +271,15 @@ if __name__=='__main__':
         mu = np.zeros(2)
     else:
         #Parameters that work for 3D
-        Pk_norm = 1000.0
+        Pk_norm = 500.0
         Pk_index= -1.3
         covmat = np.eye(3)
         mu = np.zeros(3)
     
     print('Nbox:', Nbox)
     if not os.path.isfile('rgbox.npy'):
-        rs = gf.build_cluster(Nstars=500, Nbox=Nbox,  Lbox=Lbox, Rcl = 30.0, \
-                 sharp_edge= 5.0, Pk_norm=Pk_norm, Pk_index=Pk_index, normed_covmat=covmat, mu=mu, seed=856)
+        rs = gf.build_cluster(Nstars=2000, Nbox=Nbox,  Lbox=Lbox, Rcl = 30.0, \
+                 sharp_edge= 8.0, Pk_norm=Pk_norm, Pk_index=Pk_index, normed_covmat=covmat, mu=mu, seed=231)
         np.save('rgbox', rs)
     else:
         rs = np.load('rgbox.npy')

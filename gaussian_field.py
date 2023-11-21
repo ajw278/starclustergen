@@ -88,7 +88,7 @@ def weighted_random_choice(arr, size=10):
     # Choose a random index based on the calculated weights
     #We do not replace each cell. This ensures that the normalisation of the field
     #is not so important as long as the grid cells are sufficiently small
-    index = np.random.choice(len(flattened_arr), p=weights, size=size, replace=True)
+    index = np.random.choice(len(flattened_arr), p=weights, size=size, replace=False)
     
     
     # Convert the 1D index back to N-D indices
@@ -245,7 +245,7 @@ def draw_stars(rgr, density, Nstars=500, plot=True, Pkfunc=None):
 
         return f/np.pi
 
-    Rpc = np.array([rst[0], rst[1]])
+    Rpc = np.array([rst[0]-np.median(rst[0]), rst[1]-np.median(rst[1])])
     # The number of grid points are also required when passing the samples
     print(Rpc)
     
@@ -266,6 +266,8 @@ def draw_stars(rgr, density, Nstars=500, plot=True, Pkfunc=None):
         if not Pkfunc is None:
             plt.plot(bins_samples3D, Pkfunc(bins_samples3D),label="Input Power")
 
+        
+        plt.plot(bins_samples, 30.*bins_samples**-1.3,label="Inferred 2D PS")
         plt.legend()
         plt.xscale('log')
         plt.yscale('log')
@@ -284,7 +286,8 @@ def draw_stars(rgr, density, Nstars=500, plot=True, Pkfunc=None):
             yplt = rgr[1]    
 
 
-        ctf = plt.contourf(xplt, yplt, np.log10(field_plt), cmap='viridis', levels=np.arange(-38., -34, 0.5))
+        maxf = np.log10(np.amax(field_plt))
+        ctf = plt.contourf(xplt, yplt, np.log10(field_plt), cmap='viridis', levels=np.linspace(maxf-5., maxf,20))
         plt.scatter(rst[0], rst[1], color='r', s=1, alpha=0.3)
 
 
@@ -296,7 +299,7 @@ def draw_stars(rgr, density, Nstars=500, plot=True, Pkfunc=None):
             plt.axhline(rguy, color='k', linewidth=0.01)
         plt.colorbar(ctf)
         
-        plt.savefig('gfield.pdf', format='pdf', bbox_inches='tight')
+        plt.savefig('gfield.png', format='png', bbox_inches='tight')
         plt.close()
 
     return rst
@@ -395,7 +398,7 @@ def build_cluster(Nstars=500, Nbox=Ngrid,  Lbox=Lscale, Rcl = cluster_size_facto
     ndim = normed_covmat.shape[0]
     normed_covmat /= np.linalg.det(normed_covmat)**(1./ndim)
     covmat = normed_covmat*(Rcl)**2.
-    rgr, field, pkfunc = gen_gfield(covmat=covmat, mu=mu, Ndim=ndim, Nbox =Nbox, Pk_norm=Pk_norm, Pk_index=Pk_index, sharp_edge=sharp_edge, seed=seed)
+    rgr, field, pkfunc = gen_gfield(covmat=covmat, mu=mu, Ndim=ndim, Nbox =Nbox, Lbox=Lbox, Pk_norm=Pk_norm, Pk_index=Pk_index, sharp_edge=sharp_edge, seed=seed)
     rst = draw_stars(rgr, field, Nstars=Nstars, Pkfunc=pkfunc)
     return rst
     
