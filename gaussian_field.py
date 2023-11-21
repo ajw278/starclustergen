@@ -188,7 +188,7 @@ def gen_gfield(covmat=def_covmat, mu=def_mu, Ndim=ND, Nbox =Ngrid , Lbox=Lscale,
     density = density_*(cluster_shape**sharp_edge)
     density /= np.amax(density)
     
-    if plot:
+    if plot and False:
         if Ndim==3:
             
             fig = plt.figure()
@@ -252,24 +252,26 @@ def draw_stars(rgr, density, Nstars=500, plot=True, Pkfunc=None):
     print(Rpc.T.shape, rst.T.shape)
     p_k_samples, bins_samples = get_power(Rpc.T,50.0,N=30, b=1.0)
     p_k_samples3D, bins_samples3D = get_power(rst.T,50.0,N=30, b=1.0)
-    
-    print(bins_samples)
-    #plt.plot(bins_samples, 30.0*bins_samples**-1.6,label="Guess Power")
-    plt.plot(bins_samples, p_k_samples, marker='o', label="Normal Sample Power")
-
-    
-    #plt.plot(bins_samples, inv_Abel(p_k_samples, bins_samples), marker='s', label='Inverse Abel')
-    plt.plot(bins_samples3D, p_k_samples3D, marker='s', label='3D True')
-    if not Pkfunc is None:
-        plt.plot(bins_samples3D, Pkfunc(bins_samples3D),label="Input Power")
-
-    plt.legend()
-    plt.xscale('log')
-    plt.yscale('log')
-    plt.show()
+   
 
     
     if plot:
+        print(bins_samples)
+        #plt.plot(bins_samples, 30.0*bins_samples**-1.6,label="Guess Power")
+        plt.plot(bins_samples, p_k_samples, marker='o', label="Normal Sample Power")
+
+
+        #plt.plot(bins_samples, inv_Abel(p_k_samples, bins_samples), marker='s', label='Inverse Abel')
+        plt.plot(bins_samples3D, p_k_samples3D, marker='s', label='3D True')
+        if not Pkfunc is None:
+            plt.plot(bins_samples3D, Pkfunc(bins_samples3D),label="Input Power")
+
+        plt.legend()
+        plt.xscale('log')
+        plt.yscale('log')
+        plt.savefig('corrfuncs.pdf', format='pdf', bbox_inches='tight')
+        plt.close()
+        
         if ndim==3:
 
             #If 3D, sum over the y-dimension
@@ -293,7 +295,9 @@ def draw_stars(rgr, density, Nstars=500, plot=True, Pkfunc=None):
         for rguy in rguny:
             plt.axhline(rguy, color='k', linewidth=0.01)
         plt.colorbar(ctf)
-        plt.show()
+        
+        plt.savefig('gfield.pdf', format='pdf', bbox_inches='tight')
+        plt.close()
 
     return rst
 
@@ -398,6 +402,6 @@ def build_cluster(Nstars=500, Nbox=Ngrid,  Lbox=Lscale, Rcl = cluster_size_facto
     
 if __name__=='__main__':
     
-    rgr, field = gen_gfield()
+    rgr, field, pkfunc = gen_gfield()
     rst = draw_stars(rgr, field, Nstars=2000)
     plot_corrfunc(rst, rgr)
