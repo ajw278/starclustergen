@@ -32,7 +32,7 @@ delta_logP = 0.7
 
 no_hard_edge=True
 
-maxlogP = 9.0
+maxlogP = 10.0
 
 # Define the binary fraction functions
 def f_logP_lt_1(M1):
@@ -54,7 +54,7 @@ def binary_fraction(logP,  M1):
     elif 2.7 + delta_logP <= logP < 5.5:
         return f_logP_2_7(M1) + alpha * delta_logP + (logP - 2.7 - delta_logP) / (2.8 - delta_logP) * (
                 f_logP_5_5(M1) - f_logP_2_7(M1) - alpha * delta_logP)
-    elif 5.5 <= logP < maxlogP or (5.5 <= logP and no_hard_edge):
+    elif 5.5 <= logP < maxlogP: # or (5.5 <= logP and no_hard_edge):
         return f_logP_5_5(M1)  #* np.exp(-0.3 * (logP - 5.5))
     else:
         return 0.0
@@ -214,12 +214,10 @@ def add_binaries(rs, ms, bf, xb, vb, q, vs=None):
         
         for i, ib in enumerate(ibs):
             vs_b[i] = vs.T[ib] + vb[ib][:ndim]
-            print(vs_b[i], vs.T[ib], vb[ib][:ndim])
         vs_all = np.append(vs, vs_b.T, axis=1)
     else:
         vs_all = None
-        
-    print(rs.shape, rs_b.shape)
+    
     return np.append(rs, rs_b.T, axis=1), vs_all, np.append(ms, ms_b, axis=0)
 
 def plot_pairs(rstars_phys):
@@ -338,15 +336,38 @@ def plot_dvNN(rs, vs):
     velocities = vs.T
     # Calculate distances between all pairs of stars
     distances = cdist(positions, positions)
+    vdistances = cdist(velocities, velocities)
 
     # Set the diagonal elements to a large value (to exclude a star being its own nearest neighbor)
     np.fill_diagonal(distances, np.inf)
+    
+    dist1ct = distances[np.triu_indices(len(distances), k=1)]
+    vdist1ct = vdistances[np.triu_indices(len(distances), k=1)]
+    
+    irand = np.random.choice(np.arange(len(dist1ct)), size=1000, replace=False)
+    """plt.figure(figsize=(8, 6))
+    plt.scatter(dist1ct[irand], vdist1ct[irand], c='blue', alpha=0.7, edgecolors='none')
+
+    plt.title('Magnitude of Velocity Difference to Neighbours')
+    plt.xlabel('X Position')
+    plt.ylabel('Y Position')
+    plt.xscale('log')
+    plt.yscale('log')
+    plt.show()"""
 
     # Find the index of the nearest neighbor for each star
     nearest_neighbors = np.argmin(distances, axis=1)
     num_stars = len(positions)
     nearest_neighbor_distances = distances[np.arange(num_stars), nearest_neighbors]
+    
+    distance
 
+    bins = np.logspace(-1.5, 1.5)
+    plt.hist(distances.flatten(), bins=bins, density=True, histtype='step')
+    plt.hist( nearest_neighbor_distances, bins=bins,density=True, histtype='step')
+    plt.yscale('log')
+    plt.xscale('log')
+    plt.show()
 
     # Calculate the magnitude of the difference in velocity between each star and its nearest neighbor
     velocity_differences = np.linalg.norm(velocities - velocities[nearest_neighbors], axis=1)
@@ -367,7 +388,7 @@ if __name__=='__main__':
     binsep = distance*deg2rad*(10.**-1.5)/1.5
     Lbox  = 80.0
     lNbox_est = math.log2(Lbox/binsep)
-    Nbox = int(2.**(int(lNbox_est)-2))
+    Nbox = int(2.**(int(lNbox_est)))
     print(Nbox)
     ndim=3
     seed=231
@@ -379,7 +400,6 @@ if __name__=='__main__':
     r0 = 1.0
     
     r0 = deg2rad*distance
-    print(r0)
     sv0 *= mas2rad*distance*pc2cm/year2s
     
     if ndim==2:
@@ -390,14 +410,14 @@ if __name__=='__main__':
         mu = np.zeros(2)
     else:
         #Parameters that work for 3D
-        Pk_norm = 1000.0
-        Pk_index= -5./3.
+        Pk_norm = 200.0
+        Pk_index= -1.3
         covmat = np.eye(3)
         mu = np.zeros(3)
     
     print('Nbox:', Nbox)
     if not os.path.isfile('rgbox.npy'):
-        rs = gf.build_cluster(Nstars=2000, Nbox=Nbox,  Lbox=Lbox, Rcl = 40.0, \
+        rs = gf.build_cluster(Nstars=10000, Nbox=Nbox,  Lbox=Lbox, Rcl = 100.0, \
                  sharp_edge= 10.0, Pk_norm=Pk_norm, Pk_index=Pk_index, normed_covmat=covmat, mu=mu, seed=seed)
         np.save('rgbox', rs)
     else:
