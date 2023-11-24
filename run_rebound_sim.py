@@ -12,7 +12,7 @@ class enctrack():
             
 
 class setupSimulation():
-    def __init__(self, r, v, m, units=('Myr', 'pc', 'Msun'), fname='archive', dtsave=1e-7):
+    def __init__(self, r, v, m, units=('Myr', 'pc', 'Msun'), fname='archive', dtsave=1e-4):
         self.r = r
         self.v = v
         self.m = m

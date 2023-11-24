@@ -514,4 +514,4 @@ if __name__=='__main__':
     
     sim = rb.setupSimulation(rs_all, vs_all, ms_all, units=('Myr', 'pc', 'Msun'))
     
-    sim.integrate(1.0)
+    sim.integrate(3.0)
