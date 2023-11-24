@@ -146,7 +146,7 @@ def lognormal(x, mu, sigma):
     return (1./x/sigma/np.sqrt(2.*np.pi))*np.exp(-(np.log(x)-mu)**2/2./sigma/sigma)
 
 #Generate a Gaussian random field with covariance
-def gen_gfield(covmat=def_covmat, mu=def_mu, Ndim=ND, Nbox =Ngrid , Lbox=Lscale, Pk_norm=10.0, Pk_index=-1.5, sharp_edge=SHARPEDGE,plot=True, seed=None):
+def gen_gfield(covmat=def_covmat, mu=def_mu, Ndim=ND, Nbox =Ngrid , Lbox=Lscale, Pk_norm=10.0, Pk_index=-1.5, sharp_edge=SHARPEDGE,plot=True, seed=None, Lbox_comp=None, pk2d_func=None):
     
     Ndim = covmat.shape[0]
     dLbox = Lbox/Nbox
@@ -179,14 +179,66 @@ def gen_gfield(covmat=def_covmat, mu=def_mu, Ndim=ND, Nbox =Ngrid , Lbox=Lscale,
     print(dir(lnpb))
     
     density_ = 1.+delta_x
+    
+    
 
     invcov = np.linalg.inv(covmat)
     det = np.linalg.det(covmat)
     volume = det
     cluster_shape = pmulti_gauss(rmgr, mu, invcov)
     
+    
+    
     density = density_*(cluster_shape**sharp_edge)
     density /= np.amax(density)
+    
+    if not pk2d_func is None or True:
+        surfdensity = np.sum(density, axis=2)
+        surfdensity_ = np.sum(density_, axis=2)
+    
+        if Lbox_comp is None:
+                Lbox_comp = Lbox
+
+        p_k, k = get_power(surfdensity, Lbox_comp)
+        
+        
+        lndensity = np.log(density)
+        lnvar = np.var(lndensity)
+        lnmean = np.mean(lndensity)
+        lndensity -= lnmean
+        lndensity /= 2.0
+        lndensity += 0.5
+        
+        density_alt = np.exp(lndensity)
+        print('lnvar, lnmean:', lnvar, lnmean)
+        sdalt = np.sum(density_alt, axis=2)
+        
+        
+        p_kalt, kalt = get_power(sdalt, Lbox_comp)
+        
+        p_kinit, kinit = get_power(surfdensity_, Lbox_comp)
+        
+        plt.plot(k, p_k/p_k[0])
+        plt.plot(kinit, p_kinit/p_kinit[0])
+        plt.plot(kalt, p_kalt/p_kalt[0])
+        plt.plot(k, 30.*k**-1.3 /(30.*k[0]**-1.3))
+        
+        dbins, dPk = np.load('Taurus_Pk.npy')[:]
+        plt.plot(dbins, dPk/dPk[0])
+        plt.xscale('log')
+        plt.yscale('log')
+        plt.show()
+        
+        plt.imshow(np.log10(sdalt))
+        
+        plt.show()
+        plt.imshow(np.log10(surfdensity))
+        plt.show()
+        
+        
+        
+        
+    
     
     if plot and False:
         if Ndim==3:

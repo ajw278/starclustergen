@@ -7,10 +7,14 @@ import imf
 import os
 import math
 import gen_vel as vg
+import gen_vel_gf as vgf
+
+import run_rebound_sim as rb
 
 from powerbox import get_power
 
 from scipy.spatial.distance import cdist
+
 
 distance = 140.0
 deg2rad = np.pi/180.0
@@ -30,8 +34,9 @@ km2cm = 1e5
 alpha = 0.018
 delta_logP = 0.7
 
-no_hard_edge=True
 
+no_hard_edge=True
+minlogP = 4.0
 maxlogP = 10.0
 
 # Define the binary fraction functions
@@ -45,7 +50,11 @@ def f_logP_5_5(M1):
     return 0.078 - 0.05 * np.log10(M1) + 0.04 * np.log10(M1)**2
 
 def binary_fraction(logP,  M1):
-    if 0.2 <= logP < 1.0:
+    if logP<minlogP:
+        return 0.0
+    elif logP>maxlogP:
+        return 0.0
+    elif 0.2 <= logP < 1.0:
         return f_logP_lt_1(M1)
     elif 1.0 <= logP < 2.7 - delta_logP:
         return f_logP_lt_1(M1) + (logP - 1) / (1.7 - delta_logP) * (f_logP_2_7(M1) - f_logP_lt_1(M1) - alpha * delta_logP)
@@ -316,7 +325,7 @@ def plot_stars_with_velocity(rs, vs, cdim, title=''):
     velocities = vs[cdim, :]
 
     # Create a scatter plot
-    plt.scatter(positions_x, positions_y, c=velocities, cmap='viridis', marker='o', alpha=0.8)
+    plt.scatter(positions_x, positions_y, c=velocities/1e5, cmap='viridis', marker='o', alpha=0.8)
 
     # Add labels and title
     plt.xlabel(f"Position in Dimension {other_dimensions[0] + 1}")
@@ -325,7 +334,7 @@ def plot_stars_with_velocity(rs, vs, cdim, title=''):
 
     # Add a colorbar
     cbar = plt.colorbar()
-    cbar.set_label('Velocity')
+    cbar.set_label('Velocity [km/s]')
 
     # Show the plot
     plt.show()
@@ -360,7 +369,6 @@ def plot_dvNN(rs, vs):
     num_stars = len(positions)
     nearest_neighbor_distances = distances[np.arange(num_stars), nearest_neighbors]
     
-    distance
 
     bins = np.logspace(-1.5, 1.5)
     plt.hist(distances.flatten(), bins=bins, density=True, histtype='step')
@@ -383,75 +391,127 @@ def plot_dvNN(rs, vs):
     plt.yscale('log')
     plt.show()
 
+from mpl_toolkits.mplot3d import Axes3D
+
+    
+def select_istars(rstars, rmax, sharpness=10.0):
+    istars  = np.arange(rstars.shape[1])
+    
+    rmag = np.linalg.norm(rstars, axis=0)
+    
+    pinc = np.exp(-rmag*rmag/2./rmax/rmax)**sharpness
+    u = np.random.uniform(size=len(rmag))
+    iinc = u<pinc
+    
+    ist = istars[iinc]
+    
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+
+    # Extract coordinates for each dimension
+    x = rstars[0, ist]
+    y = rstars[1, ist]
+    z = rstars[2, ist]
+    
+    xi= rstars[0, :]
+    yi = rstars[1, :]
+    zi = rstars[2, :]
+
+    ax.scatter(x, y, z, c='r', marker='o', s=1)
+    #ax.scatter(xi, yi, zi, c='b', marker='o', s=1)
+
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+
+    plt.show()
+    
+    
+    return istars[iinc]
+    
+    
+    
 if __name__=='__main__':
     
-    binsep = distance*deg2rad*(10.**-1.5)/1.5
-    Lbox  = 80.0
-    lNbox_est = math.log2(Lbox/binsep)
-    Nbox = int(2.**(int(lNbox_est)))
-    print(Nbox)
-    ndim=3
-    seed=231
-    seed =586
-    vcalc=True
-    
-    sv0 = 10.**0.30530517 
-    p = 0.72082734
-    r0 = 1.0
-    
-    r0 = deg2rad*distance
-    sv0 *= mas2rad*distance*pc2cm/year2s
-    
-    if ndim==2:
-        #Parameters that work for 2D
-        Pk_norm = 20.0
-        Pk_index = -1.3
-        covmat = np.eye(2)
-        mu = np.zeros(2)
-    else:
-        #Parameters that work for 3D
-        Pk_norm = 200.0
-        Pk_index= -1.3
-        covmat = np.eye(3)
-        mu = np.zeros(3)
-    
-    print('Nbox:', Nbox)
-    if not os.path.isfile('rgbox.npy'):
-        rs = gf.build_cluster(Nstars=10000, Nbox=Nbox,  Lbox=Lbox, Rcl = 100.0, \
-                 sharp_edge= 10.0, Pk_norm=Pk_norm, Pk_index=Pk_index, normed_covmat=covmat, mu=mu, seed=seed)
-        np.save('rgbox', rs)
-    else:
-        rs = np.load('rgbox.npy')
+    if not os.path.isfile('sim_ics_r.npy') or not os.path.isfile('sim_ics_v.npy') or not os.path.isfile('sim_ics_m.npy'):
+        binsep = distance*deg2rad*(10.**-1.5)/1.5
+        Lbox  = 60.0
+        lNbox_est = math.log2(Lbox/binsep)
+        Nbox = int(2.**(int(lNbox_est)-2))
+        print(Nbox)
+        ndim=3
+        seed=231
+        seed =586
+        vcalc=True
+
+        sv0 = 10.**0.30530517 
+        p = 0.72082734
+        r0 = 1.0
         
-    if vcalc:
+
+        r0 = deg2rad*distance
+        sv0 *= mas2rad*distance*pc2cm/year2s
         
-        if not os.path.isfile('vgbox.npy'):
-            vs = vg.velocity_walk(rs, first_istar=None, r0=r0, p=p, sv0=sv0)
-            np.save('vgbox', vs)
+        """rsp = np.logspace(-2, 2.0)
+        plt.plot(rsp, sv0*(rsp/r0)**p/1e5)
+        plt.yscale('log')
+        plt.xscale('log')
+        plt.show()"""
+
+        
+        if ndim==2:
+            #Parameters that work for 2D
+            Pk_norm = 20.0
+            Pk_index = -1.3
+            covmat = np.eye(2)
+            mu = np.zeros(2)
         else:
-            vs = np.load('vgbox.npy')
-            
+            #Parameters that work for 3D
+            Pk_norm = 200.0
+            Pk_index= -1.3
+            covmat = np.eye(3)
+            mu = np.zeros(3)
+
+        print('Nbox:', Nbox)
+        if not os.path.isfile('rgbox.npy'):
+            rs = gf.build_cluster(Nstars=10000, Nbox=Nbox,  Lbox=Lbox, Rcl = 30.0, \
+                     sharp_edge= 10.0, Pk_norm=Pk_norm, Pk_index=Pk_index, normed_covmat=covmat, mu=mu, seed=seed)
+            np.save('rgbox', rs)
+        else:
+            rs = np.load('rgbox.npy')
+
+        istars = np.arange(rs.shape[1]) 
+        istars = select_istars(rs, 30.0, sharpness=10.0)
+        istars = np.random.choice(istars, size=500, replace=False)
+        print(rs.shape)
+        rs = rs[:, istars]
+        
+        print('Vcalc walk...')
+        vs = vgf.velocity_gen(rs, r0=r0, p=p, sv0=sv0)
+
+        
+        #plot_pairs(rs)
+        ms = assign_masses(rs)
+        bf, logP, q, e = generate_binary_population(ms)
+        xb, vb = generate_binary_pv(ms, bf, logP, q, e)
+
+        rs_all, vs_all, ms_all = add_binaries(rs,  ms, bf, xb/pc2cm, vb, q, vs=vs)
+
+        np.save('rstars_wbin.npy', rs_all)
+        
+        vs_all /= pc2cm/(1e6*year2s)
+        
+        np.save('sim_ics_r', rs_all)
+        np.save('sim_ics_v', vs_all)
+        np.save('sim_ics_m', ms_all)
+    
     else:
-        vs=None
+        rs_all = np.load('sim_ics_r.npy')
+        vs_all = np.load('sim_ics_v.npy')
+        ms_all = np.load('sim_ics_m.npy')
         
-    istars = np.random.choice(np.arange(rs.shape[1]), size=500, replace=False)
-    print(rs.shape)
-    rs = rs[:, istars]
-    if not vs is None:
-        vs = vs[:, istars]
-        plot_dvNN(rs, vs)
-        plot_stars_with_velocity(rs, vs, 2, title='')
-        
-    plot_pairs(rs)
-    ms = assign_masses(rs)
-    bf, logP, q, e = generate_binary_population(ms)
-    xb, vb = generate_binary_pv(ms, bf, logP, q, e)
-    print(xb, vb)
     
-    rs_all, vs_all, ms_all = add_binaries(rs,  ms, bf, xb/pc2cm, vb, q, vs=vs)
-    np.save('rstars_wbin.npy', rs_all)
-    plot_pairs(rs_all)
     
-    if not vs is None:
-        plot_dvNN(rs_all, vs_all)
-        plot_stars_with_velocity(rs_all, vs_all, 2, title='')
+    sim = rb.setupSimulation(rs_all, vs_all, ms_all, units=('Myr', 'pc', 'Msun'))
+    
+    sim.integrate(1.0)
