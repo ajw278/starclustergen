@@ -2,8 +2,6 @@ from __future__ import print_function
 
 from datetime import datetime
 import numpy as np
-import pyximport; pyximport.install(setup_args={'include_dirs':[np.get_include()]})
-import cluster_calcs
 import sys
 import os
 

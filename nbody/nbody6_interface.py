@@ -2,7 +2,7 @@ from __future__ import print_function
 
 import os
 import numpy as np
-import pyximport; pyximport.install(setup_args={'include_dirs':[np.get_include()]})
+#import pyximport; pyximport.install(setup_args={'include_dirs':[np.get_include()]})
 import time
 import copy
 import sys
@@ -14,34 +14,31 @@ import scipy.interpolate as interpolate
 scriptdir = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, scriptdir)
 sys.path.insert(0, scriptdir+'../general')
-import pyximport; pyximport.install()
+
+#import cluster_calcs as cc
 
 from common import *
 
-sys.path = SYSPATH
 import command_class as cclass
 import cluster_utils as cu
 import cluster_calcs as cc
 import nbody6_template
 import saveload
-import viscdisc_class as vdclass
 
 
 #mpl_cols = ['k','b','g','r','orange', 'c', 'm', 'y']
 
 class nbody6_cluster:
-	def __init__(self, rstars, vstars, mstars, tunit=(1./s2myr), munit=(1./kg2sol), runit=(1./m2pc), outname='clustersim', dtsnap =1e-1, tend = 1.0, assoc=None, gasparams=None, etai=0.005, etar=0.01, etau=0.2, dtmin=5e-7, dtadj=1.0, rmin=1e-6, astrounits=False, dtjacc=0.05, load_only=False, ctype='smooth', force_incomp = False, starinds = None, rtrunc=50.0):
+	def __init__(self, rstars, vstars, mstars, tunit=(1./s2myr), munit=(1./kg2sol), runit=(1./m2pc), outname='clustersim', dtsnap =1e-1, tend = 1.0, assoc=None, gasparams=None, etai=0.005, etar=0.01, etau=0.2, dtmin=5e-7, dtadj=1.0, rmin=1e-6, astrounits=False, dtjacc=0.05, load=False, ctype='smooth', force_incomp = False, starinds = None, rtrunc=50.0):
 		self.out = outname
 		self.idir = 0
 		self.ctype = ctype
-		load_succ = self.load()
-		self.rtrunc=rtrunc
+		if load:
+			load_succ = self.load()
+		else:
+			load_succ =False
 
-		self.complete=True
-		if not load_succ and load_only:
-			return None
-
-		if (not load_succ and not load_only):
+		if not load_succ:
 			self.complete=False
 			print('No previous simulation found...')
 			if not tunit>0. and munit>0. and runit>0.:
@@ -196,12 +193,8 @@ class nbody6_cluster:
 			print('Saving simulation setup...')
 
 			self.save()
-		elif load_only and not load_succ:
-			print('No simulation data found.')
 
-
-
-		if not load_only and hasattr(self, 'tends'):
+		if load_succ and hasattr(self, 'tends'):
 			if np.sum(self.tends)>self.tend and len(self.tends)>1:
 				lg = -1
 				while np.sum(self.tends)>self.tend:	
@@ -558,35 +551,17 @@ class nbody6_cluster:
 		indict['EPOCH0'] = 0
 		#Plotting interval for stellar evolution HRDIAG (N-body units; >= DELTAT)
 		indict['DTPLOT'] = 1.0
-
 		
-		if not os.path.isfile(self.out+'_pot.npy'):
-			print('Potential calculation')
-			if type(self.gasparams[self.idir])!=type(None) and indict['KZ'][21]!=10:
-				stell_pot = cc.stellar_potential(self.rs[stinds], self.ms[stinds])
-				gas_pot = cc.gas_potential(self.rs[stinds], self.ms[stinds], self.gasparams[self.idir][0], self.gasparams[self.idir][1])
-				gpot = np.absolute(stell_pot)+np.absolute(gas_pot)
-			else:
-				gpot = np.absolute(cc.stellar_potential(self.rs[stinds], self.ms[stinds]))
-			np.save(self.out+'_pot', np.array([gpot]))
+		if type(self.gasparams[self.idir])!=type(None) and indict['KZ'][21]!=10:
+			stell_pot = cc.stellar_potential(self.rs[stinds], self.ms[stinds])
+			gas_pot = cc.gas_potential(self.rs[stinds], self.ms[stinds], self.gasparams[self.idir][0], self.gasparams[self.idir][1])
+			gpot = np.absolute(stell_pot)+np.absolute(gas_pot)
 		else:
-			gpot = np.load(self.out+'_pot.npy')[0]
-
-		
-		if not os.path.isfile(self.out+'_kin.npy') or True:
-			print('KE calculation')
-			if not self.astunits:
-				ke = cc.total_kinetic(self.vs[stinds],  self.ms[stinds])
-			else:
-				t_G = 1./np.sqrt(G_si*self.units[1]/np.power(self.units[2], 3))
-				ke = cc.total_kinetic(self.vs[stinds]*1e3*t_G/self.units[2],  self.ms[stinds])
-				
-			np.save(self.out+'_kin', np.array([ke]))
-		else:
-			ke = np.load(self.out+'_kin.npy')[0]
-		
+			gpot = np.absolute(cc.stellar_potential(self.rs[stinds], self.ms[stinds]))
+        
+		ke = cc.total_kinetic(self.vs[stinds],  self.ms[stinds])
 		Qvir = np.absolute(ke/gpot)
-				
+        
 		print('Virial Ratio:', Qvir)
 		if Qvir<1e-2:
 			print('Error: virial ratio too small.')
@@ -766,11 +741,13 @@ class nbody6_cluster:
 			vs_all = vs_all[asort]
 			times = times[asort]
 
-			if hasattr(self, 'tends'):
-				tendtmp = self.tends[self.idir]
+			if hasattr(self, 'tends') and len(times)>0:
+				print(self.idir, self.tends, self.tends[self.idir])
+				tendtmp = np.asarray(self.tends[self.idir])
+				print(tendtmp, times)
 				iend = np.argmin(np.absolute(tendtmp-times))
 				if iend+1<len(times) and times[iend]<=tendtmp:
-					iend+=1
+				    iend+=1
 				
 				print('Trimming output to time: {0}/{1} ({2}/{3})'.format(times[iend], tendtmp, iend+1, len(times)))			
 
@@ -961,13 +938,16 @@ class nbody6_cluster:
 				self.t = times
 				self.v = vs_all
 				self.save()	
-			
-		self.rs= rs_all[-1]
-		self.vs = vs_all[-1]
-
+		
+		if len(rs_all)>0:
+			self.rs= rs_all[-1]
+			self.vs = vs_all[-1]
+			self.t = times[-1]
+		else:
+			self.t =0.0
 		#self.save()
 
-		return rs_all[-1], vs_all[-1], self.ms, times[-1], tunits, munits, runits 
+		return self.rs, self.vs, self.ms, self.t, tunits, munits, runits 
 
 
 	def magas_tseries(self):
