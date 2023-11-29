@@ -68,7 +68,7 @@ def infile_string(indict, masses, pos, vel,  mpi=False):
 	RBAR = 0
 	ZMBAR = 0
 
-	STRING += "{0} {1} {2} {3} {4} {5}\n".format(indict['N'], indict['NFIX'], indict['NCRIT'], NRAND, indict['NNBOPT'], indict['NRUN'])
+	STRING += "{0} {1} {2} {3} {4} {5} {6}\n".format(indict['N'], indict['NFIX'], indict['NCRIT'], NRAND, indict['NNBOPT'], indict['NRUN'], indict['NCOMM'])
 
 	STRING += "{0} {1} {2} {3} {4} {5} {6} {7} {8}\n".format(indict['ETAI'], indict['ETAR'], indict['RS0'],indict['DTADJ'], indict['DELTAT'],indict['TCRIT'], indict['QE'], indict['RBAR'], indict['ZMBAR'])
 

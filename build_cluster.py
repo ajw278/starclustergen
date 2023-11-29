@@ -38,7 +38,7 @@ pc2cm = 3.086e18
 Gcgs = 6.6743e-8
 Msol2g = 1.988e33
 km2cm = 1e5
-
+km2pc = 3.241e-14
 
 # Given parameters
 alpha = 0.018
@@ -509,7 +509,8 @@ if __name__=='__main__':
 
         np.save('rstars_wbin.npy', rs_all)
         
-        vs_all /= pc2cm/(1e6*year2s)
+        #
+        vs_all /= km2cm
         
         np.save('sim_ics_r', rs_all)
         np.save('sim_ics_v', vs_all)
@@ -520,8 +521,13 @@ if __name__=='__main__':
         vs_all = np.load('sim_ics_v.npy')
         ms_all = np.load('sim_ics_m.npy')
         
-    sim = nbi.nbody6_cluster(rs_all.T, vs_all.T, ms_all, tunit=(1./s2myr), munit=(1./kg2sol), runit=(1./m2pc), outname='clustersim', dtsnap =1e-1, tend = 1.0, assoc=None, gasparams=None, etai=0.005, etar=0.01, etau=0.2, dtmin=5e-7, dtadj=1.0, rmin=1e-6, astrounits=False, dtjacc=0.05, load=False, ctype='smooth', force_incomp = False, starinds = None, rtrunc=50.0)
-    sim.evolve(photo=False, wext=False, subset=5000, recalc_phot=False,recalc_flux=False,alpha=1e-3, reset=False, rinit0=50.0, rscale='fix', minit='auto')
+       	
+    GMsolpc_s2 =4.52e-30
+    tunit = 1./np.sqrt(GMsolpc_s2)
+    vs_factor = km2pc/tunit
+    
+    sim = nbi.nbody6_cluster(rs_all.T, vs_factor*vs_all.T, ms_all,  outname='clustersim', dtsnap =1e-2, tend = 1.0, assoc=None, gasparams=None, etai=0.005, etar=0.01, etau=0.2, dtmin=5e-7, dtadj=1.0, rmin=1e-6, astrounits=False, dtjacc=0.05, load=False, ctype='smooth', force_incomp = False, rtrunc=50.0)
+    sim.evolve()
     #sim = rb.setupSimulation(rs_all, vs_all, ms_all, units=('Myr', 'pc', 'Msun'))
     
     #sim.integrate(3.0)

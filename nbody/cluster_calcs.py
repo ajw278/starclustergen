@@ -25,12 +25,12 @@ def stellar_potential(rstars, mstars):
 	
     gpot_tot = 0.0
     dr = spatial.distance.cdist(rstars, rstars)
+    dr[np.diag_indices(len(dr), ndim=2)] = np.inf
     gpot = mstars[np.newaxis,:]*mstars[:, np.newaxis]/dr
 
     return np.sum(np.triu(gpot,k=1))
 
 def total_kinetic(vstars, mstars):
     vsq = np.linalg.norm(vstars, axis=1)**2
-    
     ke = np.sum(0.5*mstars*vsq)
     return ke

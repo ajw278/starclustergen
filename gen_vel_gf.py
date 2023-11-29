@@ -92,7 +92,7 @@ def plot_dvNN(rs, vs, **svparams):
     ctf=plt.contourf(D, V, np.log10(pdist), levels=levels)
     plt.colorbar(ctf, label='Normalised MB probability: $\log [v g(v)]$')
 
-    plt.scatter(nearest_neighbor_distances, velocity_differences, c='cyan', edgecolor='gray', s=5, edgecolors='none')
+    plt.scatter(nearest_neighbor_distances, velocity_differences, c='cyan', edgecolor='gray', s=5)
     # Add labels and title
 
     rsp = np.logspace(-2, 2.0)
