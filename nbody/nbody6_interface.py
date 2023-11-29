@@ -1808,7 +1808,7 @@ class nbody6_cluster:
 				else:
 					print('Input file detected.')
 					
-				RUN_STR =  NBODYDIR + "nbody6++.avx < {0} >& {1}".format(self.out+'.input', self.out+'.output')
+				RUN_STR =  NBODYDIR + "nbody6++.avx < {0} 2>&1 {1}".format(self.out+'.input', self.out+'.output')
 				if not os.path.isfile(self.out+'.output'):
 					print(RUN_STR)
 					command = cclass.Command(RUN_STR)
