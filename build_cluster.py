@@ -13,12 +13,13 @@ import sys
 
 scriptdir = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(scriptdir+'/general')
+sys.path.append(scriptdir+'/plot')
 
 from common import *
 
 
 import nbody6_interface as nbi 
-
+import cluster_plot as cp
 import run_rebound_sim as rb
 
 from powerbox import get_power
@@ -46,7 +47,7 @@ delta_logP = 0.7
 
 
 no_hard_edge=True
-minlogP = 4.0
+minlogP = 7.0
 maxlogP = 10.0
 
 # Define the binary fraction functions
@@ -90,7 +91,7 @@ def get_gammavals(logP):
     return 0.4, -0.7
 
 def get_flogP_func(M1):
-    logPsp = np.linspace(0.2, 8., 100)
+    logPsp = np.linspace(0.2, 9., 100)
     flogP = np.asarray([binary_fraction(logP, M1=M1) for logP in logPsp])
     return interpolate.interp1d(logPsp, flogP, bounds_error=False, fill_value=0.0)
 
@@ -164,7 +165,7 @@ def generate_binary_population(mstars):
     q_companions = np.full(num_stars, -1.0)
     e_companions = np.full(num_stars, -1.0)
 
-    flogPsp = np.linspace(1., 8., 100)
+    flogPsp = np.linspace(0., 9., 150)
     for i in range(num_stars):
         
         flogP_func = get_flogP_func(mstars[i])
@@ -318,7 +319,7 @@ def plot_stars_with_velocity(rs, vs, cdim, title=''):
     Parameters:
     - rs: 2D numpy array, shape (ndim, nstars), positions of stars.
     - vs: 2D numpy array, shape (ndim, nstars), velocities of stars.
-    - cdim: int, the dimension along which to color the stars based on velocity.
+    - cdim: int, the dimension amlosslong which to color the stars based on velocity.
     - title: str, title for the plot.
 
     Returns:
@@ -520,14 +521,13 @@ if __name__=='__main__':
         rs_all = np.load('sim_ics_r.npy')
         vs_all = np.load('sim_ics_v.npy')
         ms_all = np.load('sim_ics_m.npy')
-        
-       	
-    GMsolpc_s2 =4.52e-30
-    tunit = 1./np.sqrt(GMsolpc_s2)
-    vs_factor = km2pc/tunit
     
-    sim = nbi.nbody6_cluster(rs_all.T, vs_factor*vs_all.T, ms_all,  outname='clustersim', dtsnap =1e-2, tend = 1.0, assoc=None, gasparams=None, etai=0.005, etar=0.01, etau=0.2, dtmin=5e-7, dtadj=1.0, rmin=1e-6, astrounits=False, dtjacc=0.05, load=False, ctype='smooth', force_incomp = False, rtrunc=50.0)
+    print(np.median(np.absolute(rs_all)),np.median(np.absolute(vs_all)), np.median(ms_all))
+    print(rs_all.shape, vs_all.shape)
+    
+    sim = nbi.nbody6_cluster(rs_all.T, vs_all.T, ms_all,  outname='clustersim', dtsnap_Myr =1e-2, tend_Myr = 10.0, gasparams=None, etai=0.005, etar=0.01, etau=0.2, dtmin_Myr=1e-6, dtadj_Myr=0.5, rmin_pc=1e-4,dtjacc_Myr=0.5, load=True, ctype='smooth', force_incomp = False, rtrunc=50.0)
     sim.evolve()
+    cp.plot_3dpos(sim)
     #sim = rb.setupSimulation(rs_all, vs_all, ms_all, units=('Myr', 'pc', 'Msun'))
     
     #sim.integrate(3.0)

@@ -1,4 +1,3 @@
-import numpy as npalt
 import os
 import sys
 import numpy as np
@@ -32,14 +31,9 @@ sys.path.append(scriptdir+'/nbody')
 SYSPATH =sys.path
 
 
-m_units = 2e30
-r_units = 3.086e16
 G_si = 6.67e-11
-
-t_units = 1./npalt.sqrt(G_si*m_units/npalt.power(r_units, 3))
 
 s2myr = 3.17098e-8*1e-6
 m2au = 6.68459e-12
 m2pc = 3.24078e-17
 kg2sol = 1./2e30
-G_si = 6.67e-11

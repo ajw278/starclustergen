@@ -29,7 +29,7 @@ import saveload
 #mpl_cols = ['k','b','g','r','orange', 'c', 'm', 'y']
 
 class nbody6_cluster:
-	def __init__(self, rstars, vstars, mstars, tunit=(1./s2myr), munit=(1./kg2sol), runit=(1./m2pc), outname='clustersim', dtsnap =1e-1, tend = 1.0, assoc=None, gasparams=None, etai=0.005, etar=0.01, etau=0.2, dtmin=5e-7, dtadj=1.0, rmin=1e-6, astrounits=False, dtjacc=0.05, load=False, ctype='smooth', force_incomp = False, starinds = None, rtrunc=50.0):
+	def __init__(self, rstars_pc, vstars_kms, mstars_msol, outname='clustersim', dtsnap_Myr =1e-1, tend_Myr = 1.0, assoc=None, gasparams=None, etai=0.005, etar=0.01, etau=0.2, dtmin_Myr=5e-7, dtadj_Myr=1.0, rmin_pc=1e-6, dtjacc_Myr=0.05, load=False, ctype='clumpy', force_incomp = False, starinds = None, rtrunc=50.0):
 		self.out = outname
 		self.idir = 0
 		self.ctype = ctype
@@ -41,68 +41,60 @@ class nbody6_cluster:
 		if not load_succ:
 			self.complete=False
 			print('No previous simulation found...')
-			if not tunit>0. and munit>0. and runit>0.:
-				print('Unit definition incorrect.')
-				sys.exit()
 
 			self.etai = etai
 			self.etar = etar
 			self.etau = etau
-			self.dtjacc =dtjacc
-			self.tend = tend
-
-
-			self.astunits = astrounits
-
 			print('Assigning initial conditions...')
-			self.n= len(mstars)
-			if not self.astunits:
-				self.rs = rstars
-				self.vs  = vstars
-				self.ms = mstars			
-				self.units = np.array([tunit, munit, runit])
-			else:
-				self.rs = rstars*runit*m2pc
-				self.vs = vstars*runit*1e-3/tunit
-				self.ms = mstars*munit*kg2sol
-				
-				self.units = np.array([(1./s2myr), (1./kg2sol), (1./m2pc)])
-				dtmin *= tunit*s2myr
-				tend *= tunit*s2myr
-				dtadj *= tunit*s2myr
-				rmin *= runit*m2pc
+			self.n= len(mstars_msol)
+			
+			rstars, vstars, mstars, runit, tunit, munit = cu.get_nbody_units(mstars_msol, rstars_pc, vstars_kms)
+			
+			
+			self.dtjacc = 1.0 #dtjacc_Myr/tunit/s2myr
+			self.tend = tend_Myr/tunit/s2myr
+			print('Tend:', self.tend, tend_Myr)
+			self.rmin = rmin_pc/runit/m2pc
+			self.dtmin = dtmin_Myr/tunit/s2myr
+			self.dt = dtsnap_Myr/tunit/s2myr
+			print('dt:', self.dt, self.dtmin)
+			self.dtopt = self.dt
+			self.dtadj = dtjacc_Myr/tunit/s2myr
 
-				if type(gasparams)!=type(None):
-					gasparams = np.array(gasparams)
-					if len(gasparams.shape)==1:
-						gasparams[0] *= munit*kg2sol
-						gasparams[1] *= runit*m2pc
-						gasparams[2] *= munit*kg2sol/(tunit*s2myr)
-						gasparams[3] *= tunit*s2myr
-					elif len(gasparams.shape)==2:
-						for igas in range(len(gasparams)):
-							print(gasparams[igas])
-							gasparams[igas][0] *= munit*kg2sol
-							gasparams[igas][1] *= runit*m2pc
-							gasparams[igas][2] *= munit*kg2sol/(tunit*s2myr)
-							gasparams[igas][3] *= tunit*s2myr
-							print(gasparams[igas])
-							
-					else:
-						print('Error: gas parameter input incorrect')
-						print(gasparams)
-						sys.exit()
+	
+			self.units_SI = np.array([munit, runit, tunit])
+			self.units_astro = np.array([munit*kg2sol, runit*m2pc, tunit*s2myr, 1e3*runit/tunit])
+			
+			
+			self.ms = mstars
+			self.rs = rstars
+			self.vs = vstars
+			
 			self.minit = self.ms	
 			self.vinit =  self.vs
 			self.rinit = self.rs
 
-			self.rmin = rmin
-			self.dtmin = dtmin
-			print('Assigning output timestep...')
-			#Note, the values of dt for snapshots etc. should multiply by an integer to get 1
-
-			if not hasattr(self, 'assoc'):
-				self.assoc= assoc
+			if type(gasparams)!=type(None):
+				gasparams = np.array(gasparams)
+				if len(gasparams.shape)==1:
+					gasparams[0] /= self.units_astro[0]
+					gasparams[1] /= self.units_astro[1]
+					gasparams[2] /= self.units_astro[0]/self.units_astro[2]
+					gasparams[3] /= self.units_astro[2]
+				elif len(gasparams.shape)==2:
+					for igas in range(len(gasparams)):
+						print(gasparams[igas])
+						gasparams[igas][0] /= self.units_astro[0]
+						gasparams[igas][1] /= self.units_astro[1]
+						gasparams[igas][2] /=  self.units_astro[0]/self.units_astro[2]
+						gasparams[igas][3] /= self.units_astro[2]
+						print(gasparams[igas])
+						
+				else:
+					print('Error: gas parameter input incorrect')
+					print(gasparams)
+					sys.exit()
+			
 			if not hasattr(self,'gasparams'):
 				if type(gasparams)!=type(None):
 					self.gasparams = np.array(gasparams)
@@ -111,16 +103,12 @@ class nbody6_cluster:
 			
 			
 			if not hasattr(self,'starinds'):
-				if not type(starinds)==type(None):
-					self.starinds =  starinds
+				self.starinds =  starinds
+				if not starinds is None:
 					self.rs = np.ones((len(mstars),3))*1e3
 					self.vs = np.zeros((len(mstars),3))
 					self.rs[self.starinds[0]] = self.rinit[self.starinds[0]]
 					self.vs[self.starinds[0]] = self.vinit[self.starinds[0]]
-					
-				else:
-					self.starinds = None
-
 
 			self.indicts = []
 
@@ -154,7 +142,6 @@ class nbody6_cluster:
 					print('Error: gas parameter input incorrect')
 					print(self.gasparams)
 					sys.exit()
-				
 			else:
 				self.gasparams = [None]
 				self.dirs = ['run_dir']
@@ -162,10 +149,6 @@ class nbody6_cluster:
 	
 			print('Creating run directories...')
 			print(self.dirs, self.tends)
-			
-			self.dt = dtsnap
-			self.dtopt = dtsnap
-			self.dtadj = dtadj
 			
 			if self.tends[0]<self.tend*1e-10:
 				print('First time jump small, removing...')
@@ -215,10 +198,6 @@ class nbody6_cluster:
 				self.tends = self.tends[:-1]
 				self.dirs = self.dirs[:-1]
 				self.gasparams = self.gasparams[:-1]
-
-		self.rmin = rmin
-		self.dtmin = dtmin
-
 		
 		if not hasattr(self, 'r') or force_incomp:
 			self.complete=False
@@ -246,8 +225,6 @@ class nbody6_cluster:
 			return False
 
 	def adjust_dt(self, min_snaps=None):
-		if hasattr(self, 'dtopt'):
-			self.dt = self.dtopt
 		
 		dt_round = 10.0
 		itry =0
@@ -278,26 +255,13 @@ class nbody6_cluster:
 						print('dt_err/dt_acc: ', np.absolute(int(tfrac)-tfrac)/(tfrac*self.dtjacc))
 						sys.exit()
 		
-		self.dtadj = min(self.dtadj, self.dt)
 		print('Snapshot timestep: {0}'.format(self.dt))
 		
 		return None
 
 
 	def write_to_input(self, restart=None):
-		
-		"""for ir in range(len(self.rs)):
-			dr = np.linalg.norm(self.rs-self.rs[ir],axis=1)
-			dr = np.append(dr[:ir], dr[ir+1:])
-			drsmall = np.where(dr<1e-10)[0]
-			if np.amin(dr)<1e-4:
-				print('Minsep = {0} au'.format(np.amin(dr)*self.units[2]*m2au))
-			if len(drsmall)>1:
-				print('Number close neighbours: {0}'.format(len(drsmall)))
-				print(dr[drsmall])
-		sys.exit()"""
-
-
+	
 		self.adjust_dt()
 
 		
@@ -343,7 +307,7 @@ class nbody6_cluster:
 			
 		indict['TCOMP'] = 1000000.0 #2
 		#End time in Myr - don't use, use nbody units instead (TCRIT)
-		indict['TCRITP'] = 1E6 #3
+		indict['TCRITP'] = self.tend/self.units_astro[2] #3
 		
 		if type(self.starinds)==type(None):
 			indict['N'] = int(self.n) #4
@@ -371,8 +335,8 @@ class nbody6_cluster:
 		indict['RS0'] =  rguess #rguess
 		
 		
-		indict['RBAR'] = self.units[2]*m2pc
-		indict['ZMBAR'] = np.mean(self.ms)*kg2sol*self.units[1]
+		indict['RBAR'] = self.units_astro[2]
+		indict['ZMBAR'] = np.mean(self.ms)*self.units_astro[0]
 		#TCRIT - termination time in nbody units	6
 		indict['TCRIT'] = self.tends[self.idir]
 		
@@ -387,9 +351,9 @@ class nbody6_cluster:
 
 		indict['KZ'] = []
 		#KZ(1) - save file to fort.1 (1 - end of run or when dummy file STOP, 2- every 100*NMAX steps 8
-		indict['KZ'].append(0) 
+		indict['KZ'].append(1) 
 		#KZ(2) - save file to fort.2 (output time 1, output time and restart of energy error>5*QE) 9
-		indict['KZ'].append(2)
+		indict['KZ'].append(1)
 		#KZ(3) - save basic data to file conf.3 at output time 10
 		indict['KZ'].append(1)
 		#KZ(4) - supress (?) binary diagnostics on bdat.4 11
@@ -419,7 +383,7 @@ class nbody6_cluster:
 		indict['KZ'].append(0)	
 		#KZ(14) - external tidal force 21
 		if type(self.gasparams[self.idir])==type(None):
-			indict['KZ'].append(0)
+			indict['KZ'].append(1)
 		else:
 		
 			indict['KZ'].append(4)
@@ -448,10 +412,7 @@ class nbody6_cluster:
 		#KZ(22) -  INITIALIZATION OF BASIC PARTICLE DATA, MASS POSITION VELOCITY
 		#[0; based on KZ(5), IMF on KZ(2), 1; write ICs in dat.10, 2: nbody-format (7 params per line, mas, pos, vel)
 		#3: tree format, 4:starlab, ... , 9: Nbody, ignore mass and use Kz(20), 10: Nbody and units astrophysical (M_sol, pc, km/s)]   29
-		if self.astunits:
-			indict['KZ'].append(10)
-		else:
-			indict['KZ'].append(2)
+		indict['KZ'].append(2)
 			
 		#KZ(23) - Removal of escapers 30
 		indict['KZ'].append(0)
@@ -491,7 +452,7 @@ class nbody6_cluster:
 		indict['KZ'].append(0)
 		if hasattr(self, 'ctype'):
 			if self.ctype =='clumpy':
-				indict['KZ'][38]=2
+				indict['KZ'][-1]=3
 
 		#KZ(40) = 0: For the initialization of particle time steps, use only force and its first derivative, to estimate. 
 		#This is very efficent. > 0: Use Fploy2 (second and third order force derivatives calculation) to estimate the initial time steps. #was 1
@@ -633,7 +594,7 @@ class nbody6_cluster:
 		
 	def read_to_npy(self, full=False, force=False, maxfiles=200, checkQ=False, checkT=True, checkScale=False):
 
-		tunits, munits, runits = self.units
+		tunits_ast, munits_ast, runits_ast, vunits_ast = self.units_astro
 
 		if type(self.starinds)!=type(None):
 			stinds =self.starinds[self.idir]
@@ -712,7 +673,7 @@ class nbody6_cluster:
 
 
 				times[itime] = h2[1]
-				print('{0}: t={1} Myr'.format(fname, times[itime]*tunits*s2myr))
+				print('{0}: t={1} Myr'.format(fname, times[itime]))
 				for iitime in range(itime, len(rs_all)):
 					rs_all[iitime][NAME] =X
 					vs_all[iitime][NAME] =V
@@ -756,12 +717,12 @@ class nbody6_cluster:
 							break
 
 
-				tnorm = scales[3]/(tunits*s2myr)
-				rnorm = scales[0]/(runits*m2pc)
-				vnorm = scales[2]/(runits*1e-3/tunits)
-				mnorm = scales[1]/(munits*kg2sol)
+				tnorm = scales[3]/tunits_ast
+				rnorm = scales[0]/runits_ast
+				vnorm = scales[2]/vunits_ast
+				mnorm = scales[1]/munits_ast
 
-				if abs(tnorm-1.0)>2e-2 or abs(rnorm-1.0)>2e-2 or abs(vnorm-1.0)>2e-2:
+				if abs(tnorm-1.0)>2e-2 or abs(rnorm-1.0)>2e-2 or abs(vnorm-1.0)>2e-2 or abs(mnorm-1.0)>2e-2:
 					print('Physical units error:')
 					print('Time:',tnorm)
 					print('Velocity:', vnorm)
@@ -908,14 +869,14 @@ class nbody6_cluster:
 				self.save()	
 		
 		if len(rs_all)>0:
-			self.rs= rs_all[-1]
-			self.vs = vs_all[-1]
-			self.t = times[-1]
+			self.rs= rs_all
+			self.vs = vs_all
+			self.t = times
 		else:
 			self.t =0.0
 		#self.save()
 
-		return self.rs, self.vs, self.ms, self.t, tunits, munits, runits 
+		return self.rs, self.vs, self.ms, self.t, tunits_ast, munits_ast, runits_ast 
 
 
 	def magas_tseries(self):
@@ -957,7 +918,7 @@ class nbody6_cluster:
 							t = np.load(d+'/'+self.out+'_t.npy')
 							r = np.load(d+'/'+self.out+'_r.npy')
 							v = np.load(d+'/'+self.out+'_v.npy')
-							tunits, munits, runits = np.load(self.out+'_units.npy')
+							#tunits, munits, runits = np.load(self.out+'_units.npy')
 						else:
 							r = np.append(r, np.load(d+'/'+self.out+'_r.npy'), axis=0)
 							v = np.append(v, np.load(d+'/'+self.out+'_v.npy'), axis=0)
@@ -972,13 +933,13 @@ class nbody6_cluster:
 				np.save(self.out+'_t', t)
 				np.save(self.out+'_r', r)
 				np.save(self.out+'_v', v)
-				np.save(self.out+'_units', np.array([tunits, munits, runits]))
+				#np.save(self.out+'_units', np.array([tunits, munits, runits]))
 
 				self.r = r 
 				self.v = v
 				self.t = t
 				self.m = self.ms
-				self.units = np.array([tunits, munits, runits])
+				#self.units_SI = np.array([tunits, munits, runits])
 				self.save()
 		
 		return None
@@ -1035,10 +996,12 @@ class nbody6_cluster:
 					if (self.tends[idir]-ttmp)/self.tends[idir] > self.dtjacc and iatt>=3:
 						print('Error: Failure to run for {0} after {1} attempts...'.format(self.dirs[idir], iatt))
 						sys.exit()
+		self.read_to_npy(force=True, checkT=True)
 		os.chdir(homedir)
 		
 	def evolve(self):
 		self.run_nbody()
+		
 		self.combine()
 
 		

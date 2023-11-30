@@ -14,58 +14,9 @@ import time
 import numpy as np
 import scipy.interpolate as interpolate
 
+import cluster_calcs as cc
 
 
-
-
-def boltz_pdf(v, g=1.):
-	return v*v*np.exp(-1.*np.power(2., 2.*g)*v*v)
-
-
-def IMF_pdf(m):
-	S0 = 0.08
-	S1 = 0.5
-	S2 = 1.0
-
-	P1 = -1.3
-	P2 = -2.2
-	P3 = -2.7
-
-	F1 = 0.035
-	F2 = F1*np.power(S1, P1)/np.power(S1, P2)
-	F3 = F2*np.power(S2, P2)/np.power(S2, P3)
-
-	if m<=S0:
-		return 0.
-	elif m>S0 and m<S1:
-		return F1*np.power(m, P1)
-	elif m>=S1 and m<S2:
-		return F2*np.power(m, P2)
-	elif m>=S2:
-		return F3*np.power(m, P3)
-
-
-def IMF_pdf_np(m, mmax=50.0, pl3=2.7):
-	S0 = 0.08
-	S1 = 0.5
-	S2 = 1.0
-
-	P1 = -1.3
-	P2 = -2.2
-	P3 = -1.*np.absolute(pl3)
-
-	F1 = 0.035
-	F2 = F1*np.power(S1, P1)/np.power(S1, P2)
-	F3 = F2*np.power(S2, P2)/np.power(S2, P3)
-
-	imf = np.zeros(len(m))
-
-	imf[(m > S0) & (m <= S1)] = F1*np.power(m[(m > S0) & (m <= S1)], P1)
-	imf[(m > S1) & (m <= S2)] = F2*np.power(m[(m > S1) & (m <= S2)], P2)
-	imf[m > S2] = F3*np.power(m[m > S2], P3)
-	imf[m>mmax] = 0.0
-
-	return imf
 
 
 #Function to calculate the maximum mass probability distribution for a given cluster of size nclust
@@ -126,6 +77,35 @@ def get_vstars(nstars, g=1.):
 	return vstars
 
 
+def get_nbody_units(ms_Msol, rs_pc, vs_kms):
+
+	#Convert everything to SI
+	
+	ms = ms_Msol/kg2sol
+	rs = rs_pc/m2pc
+	vs = vs_kms*1e5
+	
+	#M_units in SI is easy
+	m_units = np.sum(ms)
+	
+	#Now compute potential with G=1:
+	potG1 = cc.stellar_potential(rs, ms)
+	
+	#Multiply by G in SI
+	pot = potG1*G_si
+	
+	KE= cc.total_kinetic(vs, ms)
+	
+	#Now compute velocity units to give E=1/4
+	v_units = np.sqrt((4./m_units)*(KE - np.absolute(pot)))
+	
+	
+	r_units = G_si*m_units/v_units 
+	
+	t_units = 1./np.sqrt(G_si*m_units/np.power(r_units, 3))
+	\
+
+	return rs/r_units, vs/v_units, ms/m_units, r_units, t_units, m_units
 
 
 def get_mstars(nstars, mmax=50.0, mmin=0.08, pl3=2.7):

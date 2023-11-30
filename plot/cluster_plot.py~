@@ -1,0 +1,4664 @@
+from __future__ import print_function
+from subprocess import call
+import os
+import numpy as np
+import sys
+
+scriptdir = os.path.dirname(os.path.realpath(__file__))
+sys.path.append(scriptdir)
+sys.path.append(scriptdir+'../general')
+
+from common import *
+
+import pyximport; pyximport.install(setup_args={'include_dirs':[np.get_include()]})
+import cluster_calcs
+
+import nbody6_template
+
+
+import mpl_toolkits.mplot3d.axes3d as p3
+from matplotlib import animation
+from mpl_toolkits.mplot3d import proj3d
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+from matplotlib import cm
+import shutil
+import glob 
+from scipy.io import FortranFile
+from multiprocessing import Process, Queue
+import scipy.interpolate as interpolate
+from scipy.optimize import minimize
+from matplotlib.colors import LogNorm
+import copy
+import scipy.stats as stats
+from scipy import optimize
+import linmix
+
+import matplotlib.cm as cm
+from matplotlib.colors import Normalize
+
+#from  sklearn import mixture
+#from astroML.plotting.tools import draw_ellipse
+scriptdir = os.path.dirname(os.path.realpath(__file__))
+
+import plot_utils as cpu
+
+NBODYDIR = '/data/ajwinter/Source/Nbody6ppGPU/build/'
+
+BARPOINT = 80
+BARLINE =2
+BARMARK = 2
+s2myr = 3.17098e-8*1e-6
+m2au = 6.68459e-12
+m2pc = 3.24078e-17
+kg2sol = 1./2e30
+G_si = 6.67e-11
+g0=1.6e-3
+au2pc = m2pc/m2au
+
+mpl_cols = ['k','b','g','r','orange', 'c', 'm', 'y']
+
+def vtest(vmag, r, t):
+	for it in range(len(t)):
+		if it>0:
+			dr  = r[it]-r[it-1]
+			drmag = np.linalg.norm(dr)
+			vtmp = drmag/(t[it]-t[it-1])
+			print('V1:', np.linalg.norm(vmag[it]))
+			print('V2:', vtmp)
+
+
+def Qtest(x, y, radius):
+
+	rvals = np.swapaxes(np.array([x,y]), 0,1)
+
+	rmag = np.linalg.norm(rvals, axis=1)
+	rsub = rvals[np.where(rvals<radius)[0]]
+			
+	mstinds = cluster_calcs.mst(rsub,2)
+
+	mlen = cluster_calcs.mst_side_length(mstinds, rsub, 2)
+	slen = cluster_calcs.avg_sep(rsub, 2, 100)
+	
+	maxtmp = np.amax(np.linalg.norm(rsub,axis=1))
+	ntot = float(len(rsub))
+	Q = cluster_calcs.Qvalue(slen, mlen, maxtmp, ntot)
+	
+	return Q
+
+def fit_elson(rvals, nres, rmax=None, init_guess=np.array([4.0, 3.0])):
+	
+	print('Number rvals:', len(rvals))
+
+	
+	if rmax==None:
+		rspace = np.linspace(0., np.amax(rvals), nres)
+	else:
+		rspace = np.linspace(0., rmax, nres)
+	
+	cumdist_resfix = np.zeros(nres)
+	for ir in range(len(rspace)):
+		cumdist_resfix[ir] = len(np.where(rvals<rspace[ir])[0])
+
+	cumdist_rnorm = cumdist_resfix/cumdist_resfix[-1]
+	
+
+	def efact(x, r, ncd):
+		gamma = x[0]
+		a = x[1]
+		
+		if gamma<=2.:
+			return 1000.*(1./np.absolute(gamma))
+		if a<0.0:
+			return np.absolute(a)*100000.0
+		sigprof = np.power(1.+np.power(r/a, 2.), -gamma/2.)
+		
+		scd = np.zeros(len(sigprof))
+		for ir in range(len(sigprof)):
+			scd[ir] = np.trapz(sigprof[:ir]*2.*np.pi*r[:ir], r[:ir])
+		scd /= scd[-1]
+
+		return np.sum(np.power(scd-ncd, 2))
+
+	
+	
+	res = minimize(efact, np.array([4., 1.]), bounds = np.array([[1.1,15],[0.01, 30]]), args=(rspace, cumdist_rnorm))
+
+	gamma, a  = res.x
+	
+	sigprof = np.power(1.+np.power(rspace/a, 2), -gamma/2.)
+
+
+	total_stars = np.trapz(2.*np.pi*rspace*sigprof, rspace)
+
+	sigma_0 = cumdist_resfix[-1]/total_stars
+
+	"""sigprof *= sigma_0
+	scd = np.zeros(len(sigprof))
+	for ir in range(len(sigprof)):
+		scd[ir] = np.trapz(sigprof[:ir]*2.*np.pi*rspace[:ir], rspace[:ir])
+
+
+	
+	sigprof_act = cumdist_resfix[-1]*np.power(1.+np.power(rspace/7.5, 2), -5.8/2.)/np.trapz(np.power(1.+np.power(rspace/7.5, 2), -5.8/2.)*2.*np.pi*rspace, rspace)
+	scd_act  = np.zeros(len(sigprof))
+	for ir in range(len(sigprof)):
+		scd_act[ir] = np.trapz(sigprof_act[:ir]*2.*np.pi*rspace[:ir], rspace[:ir])"""
+
+	print('Gamma:', gamma, 'a:', a, 'sigma_0:', sigma_0)
+	
+	"""plt.plot(rspace, cumdist_resfix, 'g')
+	plt.plot(rspace, scd, 'r')
+	plt.plot(rspace, scd_act, 'k')
+	plt.show()"""
+		
+	
+	return gamma, a, sigma_0
+	
+
+def plot_3dpos(simulation, dim=None, save=False):
+
+	t = simulation.t
+	r = simulation.r
+	m = simulation.m
+	tunits, munits, runits = simulation.units
+	t *= tunits*s2myr
+
+
+	if type(dim)==type(None):
+		dim = np.amax(np.amax(r[0]))
+
+	xmin = -dim
+	xmax = dim
+	ymin = -dim
+	ymax = dim
+	zmin = -dim
+	zmax = dim		
+
+
+	if type(simulation.assoc)!=type(None):
+		try:
+			colours = [mpl_cols[int(i)] for i in simulation.assoc]
+		except:
+			colours = ['k' for i in range(len(r))]
+	else:
+		colours = ['k' for i in range(len(r))]
+
+	coords = np.swapaxes(np.swapaxes(r, 0,1), 1, 2)
+	
+	fig = plt.figure()
+	ax = p3.Axes3D(fig)
+	NSTAR = coords.shape[0]
+	Nsteps = len(t)
+
+	data = [cpu.GenLines(coords[star][0],coords[star][1], z=coords[star][2] , Nsteps=len(t)) for star in range(r.shape[1])]
+
+	lines = [ax.plot(dat[0, 0:NSTAR], dat[1,0:NSTAR], dat[2, 0:NSTAR])[0] for dat in data]
+
+	ax.scatter([0.0], [0.0], [0.0], s=20, c='r')
+
+	ax.set_title('Cluster Simulation')
+	#ax.view_init(elev=-8., azim=43.0)
+
+
+	ax.set_xlim3d([xmin,xmax])
+	ax.set_xlabel('X')
+
+	ax.set_ylim3d([ymin,ymax])
+	ax.set_ylabel('Y')
+
+	ax.set_zlim3d([zmin,zmax])
+	ax.set_zlabel('Z')
+
+
+	text = ax.text(1.-0.15,1.-0.15, 1.-0.15, '$t = $ %5.3f Myr' %t[0], zdir=None)
+
+	print("Animating...")
+
+	#Create animation object
+	line_ani = animation.FuncAnimation(fig, cpu.update_lines, frames=Nsteps, fargs = (data, lines, t, text, '', len(t),  3, colours), interval=2, blit=False, repeat=True)	
+
+	#Save animation 
+	FFMpegWriter = animation.writers['ffmpeg']
+	metadata = dict(title='Cluster Simulation',  comment='Cluster animation in 3D')
+	writer = FFMpegWriter(fps=15, metadata=metadata)
+
+
+
+	if save:
+		print("Saving to mp4...")
+		with writer.saving(fig, "orbit_3Dvis.mp4", Nsteps):
+		    for i in range(Nsteps):
+			update_lines(i, data,lines, times, text, Nsteps)
+			writer.grab_frame()
+	
+	plt.show()
+
+
+		
+	
+def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300, restrict=None):
+
+	t = simulation.t
+	r = simulation.r
+	v = simulation.v
+	m = simulation.m
+	tunits, munits, runits = simulation.units
+	t *= tunits*s2myr
+
+	print('Not implemented correctly- check units')
+	exit()
+
+	if restrict==None:
+		restrict=range(len(m))	
+	
+
+	all_x = np.array([])
+	all_e = np.array([])
+
+	evolve_rall = []
+
+	print('Starting encounter analysis...')
+
+	
+	for istar in restrict:
+		
+		if not os.path.isfile(simulation.out+'_encrevol_{0}.npy'.format(istar)):
+			print('Generating global encounter history for star {0}... '.format(istar))
+			cx, cv, cm, cn = cluster_calcs.encounter_history_istar(istar, r, v, m, 4)
+	
+			x_order = np.array([])
+			e_order = np.array([])
+			m_order = np.array([])
+			t_order = np.array([])
+
+			print('Obtaining neighbour lists for star {0}.'.format(istar))
+		
+			logsx, logse, logst = cluster_calcs.encounter_params(np.array(cx), np.array(cv), np.array(cm), t, float(m[istar]))
+			icol=0
+		
+
+			print('Organising neighbour interactions...')
+
+			for inghbr in range(len(cn)):
+				all_x = np.append(all_x, logsx[inghbr])
+				all_e = np.append(all_e, logse[inghbr])
+			
+				x_order= np.append(x_order, logsx[inghbr]*runits*m2au) 
+				e_order= np.append(e_order, logse[inghbr]) 
+				t_order = np.append(t_order, logst[inghbr]*tunits*s2myr) 
+				m_order = np.append(m_order, np.ones(len(logsx[inghbr]))*cm[inghbr])
+
+				#plt.plot(t*tunits*s2myr, np.linalg.norm(cx[inghbr], axis=1)*runits*m2au, color=mpl_cols[icol%len(mpl_cols)])
+				#plt.scatter(np.array(logst[inghbr])*tunits*s2myr, np.array(logsx[inghbr])*runits*m2au, color=mpl_cols[icol%len(mpl_cols)])
+				icol+=1
+
+			#plt.show()
+
+			chron = np.argsort(t_order)
+			x_order = x_order[chron]
+			m_order = m_order[chron]
+			e_order = e_order[chron]
+			t_order = t_order[chron]
+
+			print('Closest encounter: ', np.amin(x_order), m2au, runits)
+
+			print('Calculating disc evolution for star {0}'.format(istar))
+
+			revol = cluster_calcs.disc_evol(x_order, e_order,m_order, t_order, init_rad, m[istar],5000., 0.8)
+		
+
+			rout_evol = np.ones(res)*init_rad
+			times_evol = np.linspace(0.0, t[-1]*tunits*s2myr, res)
+
+
+			itime=0
+			if revol!=None:
+				for iev in range(res):
+					if itime<len(t_order):
+						while times_evol[iev]>t_order[itime]:
+							rout_evol[iev:] = revol[itime]
+							itime+=1
+							if itime>=len(t_order):
+								break
+
+
+				#plt.plot(times_evol, rout_evol)
+				evolve_rall.append(rout_evol)
+				np.save(simulation.out+'_encrevol_{0}'.format(istar), rout_evol)
+				np.save('time_revol', times_evol)
+			else:
+				print(np.amin(e_order), np.amin(x_order))
+				print('Binrary phase detected for {0}.'.format(istar))
+				np.save(simulation.out+'_encrevol_{0}'.format(istar), np.array([]))
+			
+		
+		else:
+			print('Previous radius calculation found for {0}'.format(istar))
+			rout_evol = np.load('revol_{0}.npy'.format(istar))
+			if len(rout_evol)>1:
+				evolve_rall.append(rout_evol)
+
+		
+
+	times_evol = np.load('time_revol.npy')
+	#plt.show()
+	evolve_rall = np.array(evolve_rall)
+	rall_mean = np.mean(evolve_rall, axis=0)
+	rall_med = np.median(evolve_rall, axis=0)
+	plt.plot(times_evol, rall_med, 'k')
+	plt.plot(times_evol, rall_mean, 'k', linestyle='--')
+	plt.show()
+
+
+
+def plot_discani3d(simulation, restrict=None, rinit=100.0, nprocs=10, rmax=5.0, mbig=30.0, ptype='radius'):
+	t = simulation.t
+	r = simulation.r
+	v = simulation.v
+	m = simulation.m
+	tunits, munits, runits = simulation.units
+
+	t *= tunits*s2myr
+
+	rout_all = simulation.phot_r
+	mdisc_all = simulation.phot_m
+
+	rmean = np.mean(rout_all, axis=0)
+
+	rswap = np.swapaxes(r, 0,2)
+	#rswap = np.swapaxes(rswap, 1,2)
+	x = rswap[0]
+	y = rswap[1]
+	z = rswap[2]
+
+	x= np.swapaxes(x,0,1)
+	y = np.swapaxes(y,0,1)
+	z = np.swapaxes(z,0,1)
+
+	rout_all = np.swapaxes(rout_all, 0,1)
+
+	cm = plt.cm.get_cmap('autumn')
+
+	# create the figure
+	fig=plt.figure()
+	ax=fig.gca(projection='3d')
+
+	# create the first plot
+
+	biginds = np.where(m>mbig)[0]
+
+	SFACT = 20.0
+	point=ax.scatter(x[1], y[1], z[1],s=SFACT*m,  marker=(5, 2), c=rout_all[0], vmin=0, vmax=100.0, cmap=cm, zorder=1)
+	#pointb =ax.scatter(x[0][biginds], y[0][biginds], z[0][biginds],s=10.*SFACT*m[biginds]*munits*kg2sol, c='c', zorder=3)
+	ax.legend()
+	ax.set_xlim([-rmax, rmax])
+	ax.set_ylim([-rmax, rmax])
+	ax.set_zlim([-rmax, rmax])
+
+	ax.set_xlabel('x (pc)')
+	ax.set_ylabel('y (pc)')
+	ax.set_zlabel('z (pc)')
+
+
+	if float(mpl.__version__.split('.')[0])>=2.0:
+		ax.set_facecolor('black')
+	else:
+		ax.set_axis_bgcolor('black')
+	ax.xaxis.label.set_color('white')
+	ax.yaxis.label.set_color('white')
+	ax.zaxis.label.set_color('white')
+	ax.tick_params(axis='x',colors='white')
+	ax.tick_params(axis='y',colors='white')
+	ax.tick_params(axis='z',colors='white')
+	R=.0
+	G=.0
+	B=.0
+	A=.0
+	ax.w_xaxis.set_pane_color((R,G,B,A))
+	ax.w_yaxis.set_pane_color((R,G,B,A))
+	ax.w_zaxis.set_pane_color((R,G,B,A))
+
+	ttext = ax.text2D(0.05, 0.95, "$t = $ {0} Myrs".format(0.0), transform=ax.transAxes, color='w')
+
+	cb1 = fig.colorbar(point)
+	cb1.set_label('Disc Radius (au)')
+
+	cbytick_obj = plt.getp(cb1.ax.axes, 'yticklabels') 
+	#cbylab_obj = plt.getp(cb1.ax.axes, 'label')                #tricky
+	#plt.setp(cbytick_obj, color='w')               
+	#plt.setp(cbylab_obj, color='w')
+	# first option - remake the plot at every frame
+	def update_axes(n, x, y, z,m, rad,times,ax):
+		ax.cla()
+		ax.set_xlim([-rmax, rmax])
+		ax.set_ylim([-rmax, rmax])
+		ax.set_zlim([-rmax, rmax])
+		ax.text2D(0.05, 0.95, "$t = $ {:03.2f} Myrs".format(times[n]), transform=ax.transAxes,color='w')
+		print('Time: {:03.2f}, mean rad:  {:.2f}, disp: {:.2f}'.format(times[n], np.mean(rad[n]), np.std(rad[n])))
+
+		ininds = np.where((np.absolute(x[n])<rmax)&(np.absolute(y[n])<rmax)&(np.absolute(z[n])<rmax))[0]
+		binds = np.where((m>30.0)&(np.absolute(x[n])<rmax)&(np.absolute(y[n])<rmax)&(np.absolute(z[n])<rmax))[0]
+		point=ax.scatter(x[n][ininds], y[n][ininds], z[n][ininds], s=SFACT*m, marker=(5, 2), c=rad[n][ininds], vmin=0, vmax=100.0, cmap=cm, zorder=1)
+		#pointb=ax.scatter(x[n][binds], y[n][binds], z[n][binds],s=30, c='c', zorder=3)
+		
+		ax.legend()
+		return point
+
+	nstep =20
+	ani=animation.FuncAnimation(fig, update_axes, len(t[1::nstep]), fargs=(x[1::nstep], y[1::nstep], z[1::nstep],m, rout_all[::nstep],t[::nstep], ax))
+
+	# make the movie file demo.mp4
+
+	writer=animation.writers['ffmpeg'](fps=5)
+	dpi = 500
+	ani.save(simulation.out+'_3D_photoevap.mp4',writer=writer,dpi=dpi)
+	
+	plt.show()
+
+def core_density_evol(simulation):
+	
+	
+	t = simulation.t
+	r =simulation.r 
+	v = simulation.v 
+	m = simulation.m
+
+	tunits, munits, runits = simulation.units
+
+	rs = np.linalg.norm(r,axis=2)
+
+	ns = np.zeros(len(t))
+
+	for itime in range(len(t)):
+		binspace = np.linspace(0.0, 4.0, 41)# np.logspace(-2.,np.log10(4.0), 5)
+		ndense, binn_edges = np.histogram(rs[itime], bins=binspace)
+		binn_vol = (4.*np.pi/3.)*(binn_edges[1:]**3-binn_edges[:1]**3)
+		binn_cent = (binn_edges[:1]+binn_edges[1:])/2.
+		ndense = np.array(ndense, dtype=np.float64)
+		ndense/= binn_vol
+
+		ns[itime] = np.amax(ndense)
+
+
+	plt.plot(t*tunits*s2myr, ns/np.power(runits*m2pc, 3))
+	plt.ylabel('$n$ (pc$^{-3}$)')
+	plt.xlabel('Time (Myr)')
+	plt.show()
+
+
+
+def plot_starani2d(simulation,rmax=12.5, centre=(.0,.0), mfilt=0.5, show_centre=False, radcent=5.0, dtsize=0.1):
+
+
+	t = copy.copy(simulation.t)
+	r =copy.copy(simulation.r)
+	v = copy.copy(simulation.v)
+	m = copy.copy(simulation.m)
+
+	tunits, munits, runits = simulation.units
+
+	tarch = t*tunits*s2myr
+	r *= runits*m2pc
+	m *= munits*kg2sol
+
+
+	
+
+	tnext = 0.0
+	isteps = []
+	for it in range(len(t)):
+		if tarch[it]>=tnext:
+			isteps.append(it)
+			tnext = tarch[it] + dtsize
+
+	
+
+	print('Tsnaps:', tarch[isteps])
+
+	rswitch = np.swapaxes(r,0,1)
+
+	rswap = np.swapaxes(r, 0,2)
+	#rswap = np.swapaxes(rswap, 1,2)
+	x = rswap[0]
+	y = rswap[1]
+	z = rswap[2]
+
+
+	x= np.swapaxes(x,0,1)
+	y = np.swapaxes(y,0,1)
+	z = np.swapaxes(z,0,1)
+
+
+	x -= centre[0]
+	y -= centre[1]
+
+	
+	# create the figure
+	mpl.rc('axes',edgecolor='k')
+	fig, ax = plt.subplots()
+
+	# create the first plot
+	biginds = np.where(m>mfilt)[0]
+
+	
+	pointb =ax.scatter(x[0][biginds], y[0][biginds],s=20, c='c', zorder=3)
+
+	ax.legend()
+	ax.set_xlim([-rmax, rmax])
+	ax.set_ylim([-rmax, rmax])
+
+
+
+	ax.set_axis_bgcolor('black')
+	"""ax.tick_params(axis='x',colors='white')
+	ax.tick_params(axis='y',colors='white')"""
+	ax.get_xaxis().set_tick_params(direction='out', width=1)
+	ax.get_yaxis().set_tick_params(direction='out', width=1)
+
+	ax.set_xlabel('x (pc)', color='k')
+	ax.set_ylabel('y (pc)', color='k')
+	ax.set_axis_bgcolor('black')
+
+	ttext = ax.text(0.05, 0.95, "$t = $ {0} Myrs".format(0.0), transform=ax.transAxes, color='k')
+
+		
+	def update_axes(n, x, y, m, times,ax):
+		ax.cla()
+		ax.set_xlim([-rmax, rmax])
+		ax.set_ylim([-rmax, rmax])
+		ax.text(0.25, 1.01, "$t =  {:03.2f}$ Myr".format(times[n]), transform=ax.transAxes,color='k')
+
+		filt1 = np.where((m>mfilt)&(np.absolute(x[n])<rmax)&(np.absolute(y[n])<rmax))[0]
+		
+		xt = x[n][filt1]
+		yt = y[n][filt1]
+		zt = z[n][filt1]
+		zsort = np.argsort(zt)
+		xt = xt[zsort]
+		yt = yt[zsort]
+
+
+		point=ax.scatter(xt,yt, s=20,c='c')
+		if show_centre:
+			pos3d = np.swapaxes(np.array([x[n],y[n],z[n]]), 0,1)
+			centre = cluster_calcs.empirical_centre(pos3d, radcent, 2, 20, 3)
+			print('Centre at t={0}: {1}'.format(times[n], centre))
+			ax.scatter(centre[0], centre[1], s=40, c='r')
+			
+		ax.legend()
+		return point
+
+	nstep =1
+	ani=animation.FuncAnimation(fig, update_axes, len(tarch[isteps]), fargs=(x[isteps], y[isteps],  m,tarch[isteps],ax))
+
+	# make the movie file demo.mp4
+
+	writer=animation.writers['ffmpeg'](fps=3)
+	dpi = 500
+	ani.save(simulation.out+'_stars_2D.mp4',writer=writer,dpi=dpi)
+
+	plt.show()
+
+				
+def plot_discani2d(simulation,rmax=12.5, centre=(.0,.0), mfilt=0.1, ptype='radius', wext=False):
+
+	
+	if wext:
+		pinds = copy.copy(simulation.photoevap_inds)
+		disc_ms = np.swapaxes(copy.copy(simulation.phot_wext_m[pinds]),0,1)
+		disc_rs = np.swapaxes(copy.copy(simulation.phot_wext_r[pinds]),0,1)
+		
+		g0vals = np.swapaxes(copy.copy(simulation.FUVwext[pinds]),0,1)
+	else:
+		pinds = copy.copy(simulation.photoevap_inds)
+		disc_ms = np.swapaxes(copy.copy(simulation.phot_m[pinds]),0,1)
+		disc_rs = np.swapaxes(copy.copy(simulation.phot_r[pinds]),0,1)
+		g0vals = np.swapaxes(copy.copy(simulation.FUV[pinds]),0,1)
+
+	t = copy.copy(simulation.t)
+	r =copy.copy(simulation.r)
+	v = copy.copy(simulation.v)
+	m = copy.copy(simulation.m)
+
+	rdisc = np.swapaxes(np.swapaxes(r,0,1)[pinds],0,1)
+	vdisc= np.swapaxes(np.swapaxes(v,0,1)[pinds],0,1)
+	tunits, munits, runits = simulation.units
+
+	tarch = t*tunits*s2myr
+	r *= runits*m2pc
+	m *= munits*kg2sol
+
+	
+	rmassive = np.swapaxes(np.swapaxes(r,0,1)[np.where(m>20.0)],0,1)
+	vmassive= np.swapaxes(np.swapaxes(v,0,1)[np.where(m>20.0)],0,1)
+
+
+	SFACT = 20.0
+
+	if ptype=='radius':
+		print('Assigning radius evolution...')	
+		plot_vals = disc_rs
+		psize=None
+	if ptype=='mass':
+		print('Assigning mass evolution...')	
+		plot_vals = disc_ms
+		psize=None
+	elif ptype=='g0':
+		print('Assigning G0...')	
+		plot_vals = g0vals
+		psize= None
+	elif ptype=='g0m':
+		plot_vals = g0vals
+		psize = 1e5*disc_ms
+		psize = np.log10(psize)
+		psize[np.where(psize<=0.)]=0.0
+		psize[np.where(np.isnan(psize))]=0.0
+	else:
+		print('Plot type not recognised: "{0}"'.format(ptype))
+		print(ptype, 'mass', ptype=='mass', type(ptype))
+		exit()
+
+	print('Evolution assigned.')
+
+	rmean = np.mean(plot_vals, axis=0)
+
+	rswap = np.swapaxes(rdisc, 0,2)
+	rswapm = np.swapaxes(rmassive, 0,2)
+	#rswap = np.swapaxes(rswap, 1,2)
+	x = rswap[0]
+	y = rswap[1]
+	z = rswap[2]
+
+	xm = rswapm[0]
+	ym = rswapm[1]
+	zm = rswapm[2]
+
+
+	x= np.swapaxes(x,0,1)
+	y = np.swapaxes(y,0,1)
+	z = np.swapaxes(z,0,1)
+
+	xm= np.swapaxes(xm,0,1)
+	ym = np.swapaxes(ym,0,1)
+	zm = np.swapaxes(zm,0,1)
+
+
+	x -= centre[0]
+	y -= centre[1]
+
+	xm -= centre[0]
+	ym -= centre[1]
+
+
+	cm = plt.cm.get_cmap('autumn')
+	"""print(rout_all[0].shape, x[0].shape, y[0].shape)
+	sc  = plt.scatter(x[0], y[0],  s=5, marker='+', c=rout_all[-1], vmin=0, vmax=100.0, cmap=cm)
+	cb1 = plt.colorbar(sc)
+	cb1.set_label('Disc Radius (au)')		
+	plt.show()"""
+
+	# create the figure
+	plt.rc('axes',edgecolor='k')
+	fig, ax = plt.subplots()
+
+	# create the first plot
+
+	if ptype=='radius':
+		point=ax.scatter(x[0], y[0], s=20,  c=plot_vals[0], vmin=20.0, vmax=100.0, cmap=cm)
+	elif ptype=='mass':
+		point=ax.scatter(x[0], y[0], s=20,  c=plot_vals[0],norm=LogNorm(vmin=1e-6, vmax=1e-1), cmap=cm)
+	elif ptype=='g0':
+		point=ax.scatter(x[0], y[0], s=20,  c=plot_vals[0], norm=LogNorm(vmin=1e2, vmax=1e5), cmap=cm)
+	elif ptype=='g0m':
+		ax.scatter(x[0], y[0], c='g',marker='+', s=1)
+		point=ax.scatter(x[0], y[0], c=plot_vals[0], norm=LogNorm(vmin=1e2, vmax=1e5), cmap=cm, s=SFACT*psize[0])
+
+	ax.scatter(xm[0], ym[0], s=50.0, c='cyan',marker='+')
+
+	ax.legend()
+	ax.set_xlim([-rmax, rmax])
+	ax.set_ylim([-rmax, rmax])
+
+
+
+
+	"""ax.tick_params(axis='x',colors='white')
+	ax.tick_params(axis='y',colors='white')"""
+	ax.get_xaxis().set_tick_params(direction='out', width=1)
+	ax.get_yaxis().set_tick_params(direction='out', width=1)
+
+	ax.set_xlabel('x (pc)', color='k')
+	ax.set_ylabel('y (pc)', color='k')
+	if float(mpl.__version__.split('.')[0])>=2.0:
+		ax.set_facecolor('black')
+	else:
+		ax.set_axis_bgcolor('black')
+
+	ttext = ax.text(0.05, 0.95, "$t = $ {0} Myrs".format(0.0), transform=ax.transAxes, color='w')
+
+	
+	cb1 = fig.colorbar(point)
+	if ptype=='g0' or ptype=='g0m':
+		cb1.set_label('FUV Flux ($G_0$)')
+	elif ptype=='radius':
+		cb1.set_label('Disc Radius (au)')
+	elif ptype=='mass':
+		cb1.set_label('Disc mass ($M_\\odot$)')
+
+	cbytick_obj = plt.getp(cb1.ax.axes, 'yticklabels') 
+
+	
+	def update_axes(n, xs, ys,xms,yms, pvals,pointsize, times,ax):
+		ax.cla()
+		ax.set_xlim([-rmax, rmax])
+		ax.set_ylim([-rmax, rmax])
+		ax.text(0.05, 0.95, "$t = {:03.2f}$ Myrs".format(times[n]), transform=ax.transAxes, color='w')
+		print('Time: {:03.2f}, mean rad:  {:.2f}, disp: {:.2f}'.format(times[n], np.mean(pvals[n]), np.std(pvals[n])))
+		filt1 = np.where((np.absolute(xs[n])<rmax)&(np.absolute(ys[n])<rmax))[0]
+		filt2 = np.where((np.absolute(xms[n])<rmax)&(np.absolute(yms[n])<rmax))[0]
+
+		
+		xt = xs[n][filt1]
+		yt = ys[n][filt1]
+		#zsort = np.argsort(zt)
+		#xt = xt[zsort]
+		#yt = yt[zsort]
+
+
+		print('Nfilt:', len(filt1), len(filt2))
+		if ptype=='radius':
+			point=ax.scatter(xt,yt, s=20, c=pvals[n][filt1], vmin=0.0, vmax=100.0, cmap=cm)
+		elif ptype=='mass':
+			point=ax.scatter(xt,yt, s=20, c=pvals[n][filt1], norm=LogNorm(vmin=1e-6, vmax=1e-1), cmap=cm)
+		elif ptype=='g0':
+			point=ax.scatter(xt,yt, s=20, c=pvals[n][filt1], norm=LogNorm(vmin=1e2, vmax=1e5), cmap=cm)
+		elif ptype=='g0m':
+			ax.scatter(xt, yt, c='g',marker='+', s=1)
+			point=ax.scatter(xt,yt, c=pvals[n][filt1], norm=LogNorm(vmin=1e2, vmax=1e5), cmap=cm, s=SFACT*pointsize[n][filt1])
+			propinds = np.where((pvals[n][filt1]>1e4)&(pointsize[n][filt1]>1e-5))[0]
+			ax.scatter(xt[propinds], yt[propinds], s=10.0, c='blue',marker='+')
+			
+
+		ax.scatter(xms[n][filt2], yms[n][filt2], s=50.0, c='cyan',marker='+')
+
+		ax.set_xlabel('x (pc)', color='k')
+		ax.set_ylabel('y (pc)', color='k')
+		#pointb=ax.scatter(x[n][biginds], y[n][biginds], z[n][biginds],s=10.*SFACT*m[biginds]*munits*kg2sol, c='c', zorder=3)
+	
+		ax.legend()
+		return point
+
+	nstep =2
+	ani=animation.FuncAnimation(fig, update_axes, len(tarch[::nstep]), fargs=(x[::nstep], y[::nstep],xm[::nstep], ym[::nstep], plot_vals[::nstep],psize[::nstep],tarch[::nstep], ax))
+
+	# make the movie file demo.mp4
+
+	writer=animation.writers['ffmpeg'](fps=5)
+	dpi = 500
+	ani.save(simulation.out+'_{0}_2D_photoevap.mp4'.format(ptype),writer=writer,dpi=dpi)
+
+	plt.show()
+
+
+def plot_mstmdisc(simulation, time=0.0, wext=False, g0=1.6e-3):
+	
+	tind=  0
+	
+		
+	if not wext:
+		pinds = copy.copy(simulation.photoevap_inds)
+		mdisc = np.swapaxes(copy.copy(simulation.phot_m[pinds]),0,1)
+		rdisc = np.swapaxes(copy.copy(simulation.phot_r[pinds]),0,1)
+		g0vals = np.swapaxes(copy.copy(simulation.FUV[pinds]),0,1)
+	else:
+		pinds = copy.copy(simulation.photoevap_inds)
+		mdisc =np.swapaxes(copy.copy(simulation.phot_wext_m[pinds]),0,1)
+		rdisc =np.swapaxes(copy.copy(simulation.phot_wext_r[pinds]),0,1)
+		g0vals = np.swapaxes(copy.copy(simulation.FUVwext[pinds]),0,1)
+
+	if len(simulation.assoc.shape)>=1:
+		assoc = copy.copy(simulation.assoc[pinds])
+	else:
+		assoc = np.array(np.ones(len(pinds)), dtype=int)
+
+
+
+	print('Subset size:', len(pinds))
+	MS= 2
+
+	t = copy.copy(simulation.t)
+	m_d = copy.copy(simulation.m)[pinds]
+	tunits, munits, runits = copy.copy(simulation.units)
+
+	tarch = t*tunits*s2myr
+	tind = np.argmin(np.absolute(tarch-time))
+	tval = tarch[tind]
+	print('Time:', tarch[tind])
+	m_d *= munits*kg2sol
+
+
+	mall=  munits*kg2sol*copy.copy(simulation.m)
+	im_b =np.where(mall>=1.0)[0]
+	m_b = mall[im_b]
+	im_m = np.where(mall>=30.0)[0]
+
+	mall=  munits*kg2sol*copy.copy(simulation.m)
+	im_b =np.where(mall>=1.0)[0]
+	m_b = mall[im_b]
+	im_m = np.where(mall>=30.0)[0]
+
+	rt_d = runits*m2pc*copy.copy(simulation.r)[tind][pinds]
+	rt_b = runits*m2pc*copy.copy(simulation.r)[tind][im_b]
+	rt_m = runits*m2pc*copy.copy(simulation.r)[tind][im_m]
+
+	
+	rt_i = runits*m2pc*copy.copy(simulation.r)[0][pinds]
+
+	
+	rt_xf, rt_yf, rt_zf = np.swapaxes(rt_d, 0,1)
+	rtf_xm, rtf_ym, rtf_zm = np.swapaxes(rt_m, 0,1)
+	rt_x, rt_y, rt_z = np.swapaxes(rt_i, 0,1)
+
+
+	Lums = get_FUVluminosities(m_b)
+
+	fluxes  = cluster_calcs.flux(rt_d*1e2/m2pc, Lums,rt_b*1e2/m2pc,2)	
+	fluxes /= g0
+
+
+	massbins = [[0.5, 0.7], [0.7,0.9],[1.0,1.1],[1.1,1.2],[1.2,1.4],[1.4,1.6],[1.6,1.8],[1.8,2.0],[0.5,2.0],[0.5,2.0]]*2
+
+
+	inds_subsel = []
+	for mbin in massbins:
+		inds = np.where((fluxes>1e3)&(fluxes<1e5)&(m_d<mbin[1])&(m_d>mbin[0]))[0]
+		inds_subsel.append(np.random.choice(inds))
+
+
+	y = np.log10(mdisc[tind][inds_subsel])
+	x = np.log10(m_d[inds_subsel])
+	ysig = np.log10(1.3*mdisc[tind][inds_subsel])-np.log10(mdisc[tind][inds_subsel])
+	xsig =  np.log10(1.1*m_d[inds_subsel])-np.log10(m_d[inds_subsel])
+	delta = y > -3.0
+	notdelta = np.logical_not(delta)
+	ycens = y.copy()
+	ycens[notdelta] = -3.0
+
+	lmcens  = linmix.LinMix(x, ycens, xsig, ysig, delta=delta, K=2)
+	lmcens.run_mcmc(silent=True, maxiter=20000)
+	
+	plt.rc('text', usetex=True)
+	plt.rc('font', family='serif')
+	
+	fig = plt.figure(figsize=(4,4))
+	ax = fig.add_subplot(111)
+	fbeta = []
+
+	NTRUNC = 5000
+
+	beta_val = np.percentile(lmcens.chain[NTRUNC:]['beta'], 5.0)
+	ibeta = np.argmin(np.absolute(beta_val-lmcens.chain[NTRUNC:]['beta']))
+	alpha_vals =lmcens.chain[NTRUNC:]['alpha']
+	alpha_val = alpha_vals[ibeta]
+	print(beta_val, alpha_val)
+	
+	for i in range(NTRUNC, len(lmcens.chain),8):
+		xs = np.linspace(np.log10(0.5), np.log10(2.0))
+		ys = lmcens.chain[i]['alpha'] + xs * lmcens.chain[i]['beta']
+		if lmcens.chain[i]['beta']>1.9:
+			fbeta.append(1.0)
+		else:
+			fbeta.append(0.0)
+		ax.plot(10.**xs, 10.**ys, color='r', alpha=0.02)
+
+	print('Fraction beta>1.9:', np.mean(np.array(fbeta)))
+	"""for i in range(0, len(lm.chain), 25):
+		xs = np.linspace(np.log10(0.5), np.log10(2.0))
+		ys = lm.chain[i]['alpha'] + xs * lm.chain[i]['beta']
+		ax.plot(10.**xs, 10.**ys, color='r', alpha=0.02)"""
+	ys = beta_val*xs+alpha_val
+	#ys =  2.43*xs+np.log10(2.3e-4)
+	ax.plot(10.**xs, 10.**ys, color='k', label='$\\beta = %.2lf$'%(beta_val))
+
+	ys_alt = 2.0*xs+alpha_val
+	#ax.plot(10.**xs, 10.**ys_alt, color='k', ls ='dashed',label='$\\beta = 2$')
+	
+	ax.errorbar(10.**x[delta], 10.**ycens[delta], xerr=0.1*10.**x[delta], yerr=0.3*10.**ycens[delta], ls=' ', c='b')
+	ax.errorbar(10.**x[notdelta], 10.**ycens[notdelta], yerr=1e-4, uplims=np.ones(sum(notdelta), dtype=bool), ls=' ', c='b')
+	
+	ax.set_xlabel('$m_\\mathrm{star}$ ($M_\\odot$)')
+	ax.set_ylabel('$M_\\mathrm{disc}$ ($M_\\odot$)')
+	ax.set_yscale('log')
+	ax.set_xscale('log')
+	ax.set_xticks([0.5, 0.7, 1.0, 1.5, 2.0])
+	ax.set_xticklabels([0.5, 0.7, 1.0, 1.5, 2.0])
+	ax.set_xlim(0.5,2.0)
+	ax.set_ylim(1e-5,1e-1)
+	ax.legend(loc='best')
+	#ax.plot([-6,6,6,-6,-6], [-3,-3,4,4,-3], color='k')
+	fig.tight_layout()
+	plt.savefig('paper_figure_betamupp.pdf', bbox_inches='tight', format='pdf')
+	plt.show()
+
+	return None	
+
+
+	
+
+	
+
+
+def plot_cumfrac(simulation, time=0.0, wext=False, g0=1.6e-3):
+
+	msol2earth = 3.3e5
+	if not wext:
+		pinds = copy.copy(simulation.photoevap_inds)
+		mdisc = np.swapaxes(copy.copy(simulation.phot_m[pinds]),0,1)
+		rdisc = np.swapaxes(copy.copy(simulation.phot_r[pinds]),0,1)
+		g0vals = np.swapaxes(copy.copy(simulation.FUV[pinds]),0,1)
+	else:
+		pinds = copy.copy(simulation.photoevap_inds)
+		mdisc =np.swapaxes(copy.copy(simulation.phot_wext_m[pinds]),0,1)
+		rdisc =np.swapaxes(copy.copy(simulation.phot_wext_r[pinds]),0,1)
+		g0vals = np.swapaxes(copy.copy(simulation.FUVwext[pinds]),0,1)
+
+	tunits, munits, runits = copy.copy(simulation.units)
+	t = simulation.t
+	tarch = t*tunits*s2myr
+	tind = np.argmin(np.absolute(tarch-time))
+	tval = tarch[tind]
+	print('Time:', tarch[tind])
+	
+
+	tind = np.argmin(np.absolute(t-time))
+
+	plt.rc('text', usetex=True)
+	#plt.rc('font', family='serif')
+
+		
+	plt.figure(figsize=(4.,4.))
+
+	it=0
+	times= [1., 1.5, 2.0]
+	lsts = ['solid', 'dashed', 'dotted']
+	for tval in times:
+		tind = np.argmin(np.absolute(tarch-tval))
+		mdisc_copy = copy.copy(mdisc[tind])
+
+		X =  mdisc_copy*1e-2*msol2earth
+		bins = np.sort(X)
+		n, bins, patches = plt.hist(X, normed=True, histtype='step', cumulative=-1, bins=bins, edgecolor='k', linestyle=lsts[it])
+		plt.plot([],[], linestyle=lsts[it],color='k', label='$t = %.1lf$ Myr'%(times[it]))
+		it+=1
+
+	plt.xscale('log')
+	plt.xlim([.1,200.0])
+	plt.ylim([0.,1.])
+	plt.legend(loc='best')
+	
+	plt.xlabel('$M$ ($M_\oplus$)')
+	plt.ylabel('$P(M_\mathrm{dust}\geq M)$')
+	plt.savefig('mdisc_cumfrac.pdf', bbox_inches='tight', format='pdf')
+
+	
+	plt.show()
+	
+	return None
+
+	
+
+
+def plot_dprops(simulation, time=0.0, wext=False, g0=1.6e-3):
+	
+	tind=  0
+	
+		
+	if not wext:
+		pinds = copy.copy(simulation.photoevap_inds)
+		mdisc = np.swapaxes(copy.copy(simulation.phot_m[pinds]),0,1)
+		rdisc = np.swapaxes(copy.copy(simulation.phot_r[pinds]),0,1)
+		g0vals = np.swapaxes(copy.copy(simulation.FUV[pinds]),0,1)
+	else:
+		pinds = copy.copy(simulation.photoevap_inds)
+		mdisc =np.swapaxes(copy.copy(simulation.phot_wext_m[pinds]),0,1)
+		rdisc =np.swapaxes(copy.copy(simulation.phot_wext_r[pinds]),0,1)
+		g0vals = np.swapaxes(copy.copy(simulation.FUVwext[pinds]),0,1)
+
+	if len(simulation.assoc.shape)>=1:
+		assoc = copy.copy(simulation.assoc[pinds])
+	else:
+		assoc = np.array(np.ones(len(pinds)), dtype=int)
+
+	
+	#print('Mean initial m_disc:', np.mean(np.log(mdisc[0])))
+	#print('Standard deviation m_disc:', np.std(np.log(mdisc[0])))
+	#exit()
+	
+
+	print('Subset size:', len(pinds))
+	MS= 2
+
+	"""print(g0[:][0])
+	print(mdisc[:][0])
+
+
+
+	print(g0[:][1])
+	print(mdisc[:][1])
+
+
+	print(g0[:][2])
+	print(mdisc[:][2])
+	exit()"""
+
+	t = copy.copy(simulation.t)
+	m_d = copy.copy(simulation.m)[pinds]
+	tunits, munits, runits = copy.copy(simulation.units)
+
+	tarch = t*tunits*s2myr
+	tind = np.argmin(np.absolute(tarch-time))
+	tval = tarch[tind]
+	print('Time:', tarch[tind])
+	m_d *= munits*kg2sol
+
+	
+	g0nonz = np.where(np.swapaxes(g0vals,0,1)[0]>1e-1)[0]
+	tg0nonz = t[g0nonz]
+	g0average =  np.trapz(g0vals[g0nonz],tg0nonz, axis=0)/(tg0nonz[-1]-tg0nonz[0])
+
+	pres_hist = g0vals[tind]/g0average
+
+	print('Shapes:', g0average.shape, g0vals[tind].shape, pres_hist.shape)
+
+	mall=  munits*kg2sol*copy.copy(simulation.m)
+	im_b =np.where(mall>=1.0)[0]
+	m_b = mall[im_b]
+	im_m = np.where(mall>=30.0)[0]
+
+	rt_d = runits*m2pc*copy.copy(simulation.r)[tind][pinds]
+	rt_b = runits*m2pc*copy.copy(simulation.r)[tind][im_b]
+	rt_m = runits*m2pc*copy.copy(simulation.r)[tind][im_m]
+
+	ctmp = cluster_calcs.empirical_centre(rt_d, 10.0, 2, 40, 2)
+
+	
+	rt_i = runits*m2pc*copy.copy(simulation.r)[0][pinds]
+
+	
+	rt_xf, rt_yf, rt_zf = np.swapaxes(rt_d, 0,1)
+	rtf_xm, rtf_ym, rtf_zm = np.swapaxes(rt_m, 0,1)
+	rt_x, rt_y, rt_z = np.swapaxes(rt_i, 0,1)
+
+	vt_i = 1e-3*runits*copy.copy(simulation.v[0])[pinds]/tunits
+	vtf  = 1e-3*runits*copy.copy(simulation.v[tind])[pinds]/tunits
+	vtf_m = 1e-3*runits*copy.copy(simulation.v)[tind][im_m]/tunits
+	
+	vt_x, vt_y, vt_z = np.swapaxes(vt_i, 0,1)
+	vtf_x, vtf_y, vtf_z = np.swapaxes(vtf,0,1)
+	vtfm_x, vtfm_y, vtfm_z = np.swapaxes(vtf_m,0,1)
+	unique_a = np.unique(assoc)
+	
+	mpl_cols = ['k', 'r', 'orange', 'lawngreen', 'brown', 'b']
+	CB_color_cycle = ['#377eb8', '#ff7f00', '#4daf4a','#f781bf', '#a65628', '#984ea3','#999999', '#e41a1c', '#dede00']
+	plt.rc('text', usetex=True)
+	plt.rc('font', family='serif')
+
+	"""plt.figure(figsize=(4.,4.))
+
+	icol=0
+	for iun in unique_a:
+
+		a_inds = np.where(assoc==iun)[0]
+		
+
+		plt.scatter(vt_x[a_inds], vt_y[a_inds], marker='+', c=CB_color_cycle[icol])
+		icol+=1
+
+	plt.ylabel('$v_x$ (km/s)')
+	plt.xlabel('$v_y$ (km/s)')
+	plt.savefig('vcheck.pdf', bbox_inches='tight', format='pdf')
+
+	plt.show()"""
+	
+	"""plt.figure(figsize=(4.,4.))
+
+	icol=0
+	for iun in unique_a:
+
+		a_inds = np.where(assoc==iun)[0]
+		
+
+		plt.scatter(rt_x[a_inds]-ctmp[0], rt_y[a_inds]-ctmp[1], marker='+', c=CB_color_cycle[icol])
+		icol+=1
+
+	plt.ylabel('$x$ (pc)')
+	plt.xlabel('$y$ (pc)')
+	plt.savefig('rcheck.pdf', bbox_inches='tight', format='pdf')
+
+	plt.show()"""
+	"""plt.figure(figsize=(4.,4.))
+
+
+	colM = plt.cm.get_cmap('RdYlBu')
+	sc=plt.scatter(g0vals[tind], rdisc[tind], marker='+',s =MS, c=m_d,  vmin=0.5, vmax=2.0, cmap=colM)
+	plt.colorbar(sc, label='$m_\\mathrm{star}$ ($M_\\odot$)')
+
+	plt.xlabel('$F_\\mathrm{FUV}$ ($G_0$)')
+	plt.ylabel('$R_\\mathrm{disc}$ (au)')
+	plt.xscale('log')
+	plt.xlim([5e2,1e4]) 
+	plt.ylim([0.0, 150.0])
+	plt.savefig('g0rdisc.pdf', bbox_inches='tight', format='pdf')
+
+	"""
+	
+
+	plt.figure(figsize=(4.,4.))
+
+	
+	colM = plt.cm.get_cmap('RdYlBu')
+	sc=plt.scatter(g0vals[tind], mdisc[tind], marker='+',s =MS, c=m_d,  vmin=0.5, vmax=2.0, cmap=colM)
+	plt.colorbar(sc, label='$m_\\mathrm{star}$ ($M_\\odot$)')
+
+	plt.xlabel('$F_\\mathrm{FUV}$ ($G_0$)')
+	plt.ylabel('$M_\\mathrm{disc}$ ($M_\\odot$)')
+	plt.yscale('log')
+	plt.xscale('log')
+	plt.xlim([5e2,1e4]) 
+	plt.ylim([1e-6, 1e-1])
+	plt.savefig('g0mdisc.pdf', bbox_inches='tight', format='pdf')
+
+
+
+	plt.figure(figsize=(4.,4.))
+
+	rbins =  np.array([0.01,20.,40., 60., 80.,100.0]) 
+	
+	icol=0
+	for iun in unique_a:
+
+		a_inds = np.where(assoc==iun)[0]
+		
+		rdtmp = rdisc[tind][a_inds]
+		fracs = []
+		for ibin in range(len(rbins)-1):
+			inds =np.where((rdtmp>rbins[ibin])&(rdtmp<rbins[ibin+1]))[0]
+			fracs.append(float(len(inds))/float(len(rdisc[tind][a_inds])))
+		
+		plt.bar(rbins[:-1], np.array(fracs)*100.0, 20., fill=False, edgecolor = CB_color_cycle[icol], linewidth=BARLINE)
+
+		#plt.scatter(m_d[a_inds], rdisc[tind][a_inds], marker='+',s =MS, c=CB_color_cycle[icol], alpha=0.8)
+		plt.plot([],[], c=CB_color_cycle[icol], linewidth=BARLINE, label='Group %d'%(iun+1))
+		icol+=1
+
+	
+	
+	
+	
+	plt.ylabel('\% of Total Sample')
+	plt.xlabel('$R_\\mathrm{disc}$ (au)')
+	plt.xlim([0.,100.]) 
+	plt.legend(loc=1, fontsize=10)
+	plt.savefig('mstarrdisc.pdf', bbox_inches='tight', format='pdf')
+	plt.show()
+
+
+	plt.figure(figsize=(4.,4.))
+
+	icol=0
+	for iun in unique_a:
+
+		a_inds = np.where(assoc==iun)[0]
+		
+
+		plt.scatter(m_d[a_inds], mdisc[tind][a_inds], marker='+',s =MS, c=CB_color_cycle[icol], alpha=0.8)
+		plt.scatter([],[], marker='+',s =10, c=CB_color_cycle[icol], label='Group %d'%(iun+1))
+		icol+=1
+
+	LMLIM = 1e-6
+	isurv = np.where(mdisc[tind]>LMLIM)[0]
+	mdisct = mdisc[tind]
+	logx = np.log10(m_d[isurv])
+	logy = np.log10(mdisct[isurv])
+
+	# define our (line) fitting function
+	fitfunc = lambda p, x: p[0] + p[1] * x
+	errfunc = lambda p, x, y: (y - fitfunc(p, x))
+	pinit = [-10.,1.]
+	out = optimize.leastsq(errfunc, pinit, args=(logx, logy), full_output=1)
+
+	pfinal = out[0]
+	covar = out[1]
+
+	index = pfinal[1]
+	amp = 10.0**pfinal[0]
+
+	indexErr = np.sqrt( covar[1][1] )
+	ampErr = np.sqrt( covar[0][0] )
+	
+	print('Index M_d (m_s)  - all stars: {0} pm {1}'.format(index, indexErr))
+	print('with amplitude: {0} pm {1}'.format(amp, ampErr))
+
+	"""
+	LMLIM = 1e-4
+	NSUB = 10
+	isurv = np.where(mdisc[tind]>LMLIM)[0]
+	mdisct = mdisc[tind]
+	logx = np.log10(m_d[isurv])
+	logy = np.log10(mdisct[isurv])
+	subinds = np.random.choice(np.arange(len(logx)), size=NSUB, replace=False)
+	logx = logx[subinds]
+	logy = logy[subinds]
+
+
+	pinit = [-10.,1.]
+	out = optimize.leastsq(errfunc, pinit, args=(logx, logy), full_output=1)
+
+	pfinal = out[0]
+	covar = out[1]
+
+	index = pfinal[1]
+	amp = 10.0**pfinal[0]
+
+	indexErr = np.sqrt( covar[1][1] )
+	ampErr = np.sqrt( covar[0][0] )
+	
+	
+	print('Index M_d (m_s)  - subset {2} with M_d > {3}: {0} pm {1}'.format(index, indexErr, NSUB, LMLIM))
+	print('with amplitude: {0} pm {1}'.format(amp, ampErr))"""
+
+	plt.xlabel('$m_\\mathrm{star}$ ($M_\\odot$)')
+	plt.ylabel('$M_\\mathrm{disc}$ ($M_\\odot$)')
+	m_d_sp = np.linspace(0.5,2.0,20)
+	m_disc_sp = amp*m_d_sp**index
+	pp =(amp*ampErr)*m_d_sp**(index+indexErr) 
+	pm =  (amp/ampErr)*m_d_sp**(index+indexErr)
+	mp =  (amp*ampErr)*m_d_sp**(index-indexErr)
+	mm = (amp/ampErr)*m_d_sp**(index-indexErr) 
+	m_disc_ul = np.amax(np.array([pp,mp,pm,mm]),axis=0)
+	m_disc_ll = np.amin(np.array([pp,mp,pm,mm]),axis=0)
+	plt.plot(m_d_sp, m_disc_sp, c='k', linewidth=BARLINE)
+	#plt.plot(m_d_sp, m_disc_ul, c='k', linewidth=BARLINE, linestyle='dashed')
+	#plt.plot(m_d_sp, m_disc_ll, c='k', linewidth=BARLINE, linestyle='dashed')
+	plt.yscale('log')
+	plt.xlim([0.5,2.]) 
+	plt.ylim([1e-6, 1e-1])
+	plt.legend(loc=4, fontsize=10)
+	plt.savefig('mstarmdisc.pdf', bbox_inches='tight', format='pdf')
+	plt.show()
+
+
+	
+
+	"""
+	plt.figure(figsize=(4.,4.))
+
+	icol=0
+	for iun in unique_a:
+
+		a_inds = np.where(assoc==iun)[0]
+		
+
+		plt.scatter(m_d[a_inds], rdisc[tind][a_inds], marker='+',s =MS, c=CB_color_cycle[icol], alpha=0.5)
+		plt.scatter([],[], marker='+',s =10, c=CB_color_cycle[icol], label='Group %d'%(iun))
+		icol+=1
+
+	plt.scatter(rtf_xm-ctmp[0], rtf_ym-ctmp[1], s=30, marker='*', c='k')
+
+	plt.xlabel('$m_\\mathrm{star}$ ($M_\\odot$)')
+	plt.ylabel('$R_\\mathrm{disc}$ (au)')
+	plt.xlim([0.5,2.]) 
+	plt.ylim([0., 100.0])
+	#plt.legend(loc=4, fontsize=10)
+	plt.savefig('mstarrdisc.pdf', bbox_inches='tight', format='pdf')
+
+
+
+	plt.figure(figsize=(4.,4.))
+
+	icol=0
+	for iun in unique_a:
+
+		a_inds = np.where(assoc==iun)[0]
+		
+
+		plt.scatter(rt_xf[a_inds]-ctmp[0], rt_yf[a_inds]-ctmp[1], marker='+', c=CB_color_cycle[icol], s=MS, alpha=0.5)
+		icol+=1
+
+	plt.ylabel('$x$ (pc)')
+	plt.xlabel('$y$ (pc)')
+	fsize=15.0
+	if fsize!=None:
+		plt.xlim([-fsize, fsize])
+		plt.ylim([-fsize, fsize])
+
+	plt.savefig('rcheck_final.pdf', bbox_inches='tight', format='pdf')
+
+	
+	plt.figure(figsize=(4.,4.))
+
+	icol=0
+	for iun in unique_a:
+
+		a_inds = np.where(assoc==iun)[0]
+		
+
+		plt.scatter(rdisc[tind][a_inds], mdisc[tind][a_inds], marker='+',s =MS, c=CB_color_cycle[icol], alpha=0.5)
+		plt.scatter([],[], marker='+',s =10, c=CB_color_cycle[icol], label='Group %d'%(iun))
+		icol+=1
+
+	plt.scatter(rtf_xm-ctmp[0], rtf_ym-ctmp[1], s=30, marker='*', c='k')
+
+	plt.xlabel('$R_\\mathrm{disc}$ (au)')
+	plt.ylabel('$M_\\mathrm{disc}$ ($M_\\odot$)')
+	plt.yscale('log')
+	plt.ylim([1e-6, 1e-1])
+	plt.xlim([0., 150.])
+	plt.legend(loc=4, fontsize=10)
+	plt.savefig('disccheck.pdf', bbox_inches='tight', format='pdf')"""
+
+
+	"""fig, ax = plt.subplots(figsize=(4.,4.))
+	Rend = rdisc[tind]
+	Mend = np.log10(mdisc[tind])
+	nstep=1
+	X = np.swapaxes(np.array([Rend,Mend]),0,1)[::nstep]
+	N = [2,3,4,5,6]
+	def compute_GMM(N, covariance_type='full', n_iter=1000):
+		models = [None for n in N]
+		for i in range(len(N)):
+			print(N[i])
+			models[i] = mixture.GMM(n_components=N[i], n_iter=n_iter,
+			covariance_type=covariance_type)
+			models[i].fit(X)
+		return models
+
+	models = compute_GMM(N)
+	AIC = [m.aic(X) for m in models]
+	BIC = [m.bic(X) for m in models]
+
+	i_best = np.argmin(BIC)
+	gmm_best = models[i_best]
+	print("best fit converged:", gmm_best.converged_)
+	print("BIC: n_components =  %i" % N[i_best])
+
+	nRbins= 101
+	nMbins = 101 
+	H, R_bins, M_bins = np.histogram2d(Rend, Mend,
+                                  (nRbins, nMbins))
+
+	Xgrid = np.array(map(np.ravel,
+             np.meshgrid(0.5 * (R_bins[:-1]
+                                + R_bins[1:]),
+                         0.5 * ( M_bins[:-1]
+                                +  M_bins[1:])))).T
+	
+	log_dens = gmm_best.score(Xgrid).reshape((nRbins, nMbins))"""
+
+	"""plt.imshow(np.exp(log_dens),
+	origin='lower', interpolation='nearest', aspect='auto',
+	extent=[R_bins[0], R_bins[-1],
+	  M_bins[0], M_bins[-1]],
+	cmap=plt.cm.binary)"""
+
+	"""plt.scatter(gmm_best.means_[:, 0], gmm_best.means_[:, 1], c='w')
+	icol = 0
+	ingroups=[]
+	subsets = gmm_best.predict(X)
+
+	print(subsets.shape)
+
+	sub_unique = np.unique(subsets)
+	
+	for mu, C, w in zip(gmm_best.means_, gmm_best.covars_, gmm_best.weights_):
+		print(mu)
+		if mu[0]>1.:
+			draw_ellipse(mu, C, scales=[1.5], ax=ax, fc='none', ec='k')	
+			ingroups.append(icol)
+		icol+=1
+	
+
+	icol=0
+	for ialph in ingroups:
+		icol=ialph
+		inds = np.where(subsets==ialph)[0]
+		plt.scatter(Rend[inds], Mend[inds], marker='+', s=MS, color=CB_color_cycle[icol], label='Group %d'%(icol+1))
+
+	plt.xlabel('$R_\\mathrm{disc}$ (au)')
+	plt.ylabel('$M_\\mathrm{disc}$ ($M_\\odot$)')
+	plt.ylim([-6, -1])
+	plt.xlim([0., 150.])
+	plt.legend(loc='best', fontsize=12)
+	plt.savefig('gmm.pdf', bbox_inches='tight', format='pdf')
+
+
+	icol=0
+	for ialph in ingroups:
+
+		plt.figure(figsize=(4.,4.))
+		a_inds = np.where(subsets==ialph)[0]
+		
+
+		plt.scatter(rt_xf[a_inds]-ctmp[0], rt_yf[a_inds]-ctmp[1],s=MS, marker='+', c=CB_color_cycle[ialph])
+		plt.ylabel('$x$ (pc)')
+		plt.xlabel('$y$ (pc)')
+		fsize=15.0
+		if fsize!=None:
+			plt.xlim([-fsize, fsize])
+			plt.ylim([-fsize, fsize])
+		plt.scatter(rtf_xm-ctmp[0], rtf_ym-ctmp[1], s=30, marker='*', c='k')
+	
+		plt.savefig('gmm_r_{0}.pdf'.format(ialph), bbox_inches='tight', format='pdf')
+	
+		icol+=1
+
+
+
+	icol=0
+	for ialph in ingroups:
+
+		plt.figure(figsize=(4.,4.))
+		a_inds = np.where(subsets==ialph)[0]
+		plt.scatter(vtf_x[a_inds]-np.mean(vtf_x), vtf_y[a_inds]-np.mean(vtf_y), s=MS, marker='+', c=CB_color_cycle[ialph])
+		plt.scatter(vtfm_x-np.mean(vtf_x), vtfm_y-np.mean(vtf_y), s=30, marker='*', c='k')
+		plt.xlim([-20.,20.])
+		plt.ylim([-20.0,20.])	
+		plt.ylabel('$v_x$ (km/s)')
+		plt.xlabel('$v_y$ (km/s)')
+
+		plt.savefig('gmm_v_{0}.pdf'.format(int(ialph)), bbox_inches='tight', format='pdf')
+		icol+=1
+	"""
+
+	"""fsize=20.
+	fig = plt.figure(figsize=(4.,4.))
+	ax = p3.Axes3D(fig)
+	for ialph in ingroups:
+		a_inds = np.where(subsets==ialph)[0]
+
+		xvals = rt_xf[a_inds]-ctmp[0]
+		yvals = rt_yf[a_inds]-ctmp[1]
+		zvals = rt_zf[a_inds]
+		sub = np.where((np.absolute(xvals)<fsize)&(np.absolute(yvals)<fsize)&(np.absolute(zvals)<fsize))[0]
+	
+		ax.scatter(xvals[sub], yvals[sub], zvals[sub], s=MS, marker='+', c=CB_color_cycle[ialph])
+	
+	xm = rtf_xm-ctmp[0]
+	ym = rtf_ym-ctmp[1]
+	zm = rtf_zm
+
+	subm = np.where((np.absolute(xm)<fsize)&(np.absolute(ym)<fsize)&(np.absolute(zm)<fsize))[0]
+	
+	ax.scatter(xm[subm], ym[subm],zm[subm],  s=30, marker='*', c='k')
+
+
+	ax.set_title('Disc Substructure')
+	#ax.view_init(elev=-8., azim=43.0)
+
+
+	ax.set_xlim3d([-fsize,fsize])
+	ax.set_xlabel('X')
+
+	ax.set_ylim3d([-fsize,fsize])
+	ax.set_ylabel('Y')
+
+	ax.set_zlim3d([-fsize,fsize])
+	ax.set_zlabel('Z')
+
+	plt.savefig('gmm_r_3d.pdf', bbox_inches='tight', format='pdf')
+
+	plt.show()"""
+	
+	
+
+	"""plt.figure(figsize=(4.,4.))
+	XLIM = [-.1,.1]
+
+	bin_divs = np.linspace(XLIM[0], XLIM[1], 10)
+	
+	icol = 0
+	for ialph in ingroups:
+		icol = ialph
+		pres_hist_sub = pres_hist[np.where(subsets==ialph)[0]]
+		pfrac = np.zeros(len(bin_divs)-1)
+		for idiv in range(len(bin_divs)-1):
+			in_div =  np.where((np.log10(pres_hist_sub)>bin_divs[idiv])&(np.log10(pres_hist_sub)<bin_divs[idiv+1]))[0]
+			pfrac[idiv] = float(len(in_div))/float(len(pres_hist_sub))
+			w = bin_divs[idiv+1]-bin_divs[idiv]
+			plt.bar(bin_divs[idiv],pfrac[idiv], width=w, edgecolor=CB_color_cycle[icol],color='None')
+
+	
+		plt.plot([],[], label='Group %d'%(ialph+1), color=CB_color_cycle[icol])
+		icol +=1
+
+	plt.legend(loc='best', fontsize=12)
+	plt.xlim(XLIM)
+	plt.ylabel('Fraction of Group')
+	plt.xlabel('$\\log \\left( F_\\mathrm{FUV, f}/\\langle F_\\mathrm{FUV} \\rangle \\right)$')
+	plt.savefig('gmm_hist.pdf', bbox_inches='tight', format='pdf')
+
+	
+
+	plt.figure(figsize=(4.,4.))
+
+	bin_divs = np.linspace(1., 5., 6)
+	
+	icol = 0
+	for ialph in ingroups:
+		icol = ialph
+		pres_hist_sub = g0average[np.where(subsets==ialph)[0]]
+		pfrac = np.zeros(len(bin_divs)-1)
+		for idiv in range(len(bin_divs)-1):
+			in_div =  np.where((np.log10(pres_hist_sub)>bin_divs[idiv])&(np.log10(pres_hist_sub)<bin_divs[idiv+1]))[0]
+			pfrac[idiv] = float(len(in_div))/float(len(pres_hist_sub))
+			w = bin_divs[idiv+1]-bin_divs[idiv]
+			plt.bar(bin_divs[idiv],pfrac[idiv], width=w, edgecolor=CB_color_cycle[icol],color='None')
+
+	
+		plt.plot([],[], label='Group %d'%(ialph+1), color=CB_color_cycle[icol])
+		icol +=1
+
+	plt.legend(loc='best', fontsize=12)
+	plt.ylabel('Fraction of Group')
+	plt.xlabel('$\\log \\left( \\langle F_\\mathrm{FUV} \\rangle \\right)$ ($G_0$)')
+	plt.show()"""
+	
+	Lums = get_FUVluminosities(m_b)
+
+	fluxes  = cluster_calcs.flux(rt_d*1e2/m2pc, Lums,rt_b*1e2/m2pc,2)	
+	fluxes /= g0
+
+	xt_d, yt_d, zt_d = np.swapaxes(rt_d, 0,1)
+	xt_b, yt_b, zt_b = np.swapaxes(rt_b, 0,1)
+
+	print(np.amax(fluxes))
+	g0vals_t = g0vals[tind]
+
+	"""plt.figure(figsize=(4.,4.))
+
+
+	plt.hist(m_d, bins=30)
+
+	plt.xlabel('$m_\mathrm{star}$ ($G_0$)')
+	plt.ylabel('$N$')
+	plt.savefig('msthist.pdf', bbox_inches='tight', format='pdf')
+
+
+	"""
+	
+	plt.figure(figsize=(4.,4.))
+
+
+	colM = plt.cm.get_cmap('RdYlBu')
+	sc=plt.scatter(fluxes, mdisc[tind], marker='+',s =MS, c=m_d,  vmin=0.5, vmax=2.0, cmap=colM)
+	plt.colorbar(sc, label='$m_\\mathrm{star}$ ($M_\\odot$)')
+
+	plt.xlabel('Projected $F_\\mathrm{FUV}$ ($G_0$)')
+	plt.ylabel('$M_\\mathrm{disc}$ ($M_\\odot$)')
+	plt.yscale('log')
+	plt.xscale('log')
+	plt.xlim([1e3,2e5]) 
+	plt.ylim([1e-6, 1e-1])
+	plt.savefig('projg0mdisc.pdf', bbox_inches='tight', format='pdf')
+
+	plt.figure(figsize=(4.,4.))
+
+	lowG0b = [3e3, 6e3]
+	highG0b = [8e3,1e10]
+	ilow = np.where((fluxes>lowG0b[0])&(fluxes<lowG0b[1]))[0]
+	ihigh = np.where((fluxes>highG0b[0])&(fluxes<highG0b[1]))[0]
+	
+	LLOBS = 1e-3
+
+	ilow_surv = np.where((fluxes>lowG0b[0])&(fluxes<lowG0b[1])&(mdisc[tind]>LLOBS))[0]
+	ihigh_surv = np.where((fluxes>highG0b[0])&(fluxes<highG0b[1])&(mdisc[tind]>LLOBS))[0]
+	rdisc_lowg0 = rdisc[tind][ilow]
+	rdisc_highg0 = rdisc[tind][ihigh]
+	rdisc_lowg0_s = rdisc[tind][ilow_surv]
+	rdisc_highg0_s = rdisc[tind][ihigh_surv]
+
+	X =  rdisc_lowg0
+	bins = np.append(np.sort(X),3e2)
+	bins = np.unique(bins)
+	n, bins, patches = plt.hist(X+1e-10, normed=True, histtype='step', cumulative=True, bins=bins, edgecolor='r')
+	
+	X =  rdisc_highg0
+	bins = np.append(np.sort(X), 3e2)
+	bins = np.unique(bins)
+	n, bins, patches = plt.hist(X, normed=True, histtype='step', cumulative=True, bins=bins, edgecolor='b')
+	
+	
+	X =  rdisc_lowg0_s
+	bins = np.append(np.sort(X), 3e2)
+	bins = np.unique(bins)
+	n, bins, patches = plt.hist(X, normed=True, histtype='step', cumulative=True, bins=bins, edgecolor='r', linestyle='dashed')
+	
+	X =  rdisc_highg0_s
+	bins = np.append(np.sort(X), 3e2)
+	bins = np.unique(bins)
+	n, bins, patches = plt.hist(X, normed=True, histtype='step', cumulative=True, bins=bins, edgecolor='b', linestyle='dashed' )
+
+	l1, =plt.plot([],[], c='k', label='All')
+	l2, = plt.plot([],[], c='k',linestyle='dashed', label='$M_\mathrm{disc}>10^{-3}\, M_\odot$')
+	
+	c1, =plt.plot([],[], c='r',  label='$10^3 \, G_0 < $ Projected $F_\mathrm{FUV}<2\cdot 10^3 \, G_0$')
+	c2, =plt.plot([],[], c='b',  label='Projected $F_\mathrm{FUV}>5 \cdot 10^3 \, G_0$')
+
+	plt.xlim([0.0,100.0])
+	plt.ylim([0.,1.])
+	leg1 = plt.legend(handles=[l1,l2], loc=2, fontsize=9)
+	plt.legend(handles=[c1,c2],fontsize=9,loc=4)
+	plt.gca().add_artist(leg1)
+	plt.xlabel('$R$ (au)')
+	plt.ylabel('$P(R_\mathrm{disc}<R)$')
+	plt.savefig('rdisc_cumfrac.pdf', bbox_inches='tight', format='pdf')
+
+	kstest1 = stats.ks_2samp(rdisc_lowg0_s, rdisc_highg0_s)
+	#print('KS:', kstest1)
+	#print('Sample sizes:', len(rdisc_lowg0_s), len(rdisc_highg0_s))
+	subset = 20
+	Ntest=100
+	pvals= []
+	for itest in range(Ntest):
+		kstest2=stats.ks_2samp(np.random.choice(rdisc_lowg0_s,size=subset,replace=False), np.random.choice(rdisc_highg0_s,size=subset,replace=False))
+		if kstest2.pvalue<0.05:
+			pvals.append(1.)
+		else:
+			pvals.append(0.0)
+	pvals = np.array(pvals)
+	print('Chance of significant p-value for sample of {0} R_disc (M_disc > 1e-3 M_sol):'.format(subset), np.mean(pvals))
+
+
+
+	kstest1 = stats.ks_2samp(rdisc_lowg0, rdisc_highg0)
+	print('KS:', kstest1)
+	print('Sample sizes:', len(rdisc_lowg0), len(rdisc_highg0))
+	subset = 20
+	Ntest=100
+	pvals= []
+	for itest in range(Ntest):
+		kstest2=stats.ks_2samp(np.random.choice(rdisc_lowg0,size=subset,replace=False), np.random.choice(rdisc_highg0,size=subset,replace=False))
+		if kstest2.pvalue<0.05:
+			pvals.append(1.)
+		else:
+			pvals.append(0.0)
+	pvals = np.array(pvals)
+	print('Chance of significant p-value for sample of {0} R_disc:'.format(subset), np.mean(pvals))
+
+
+	
+	plt.figure(figsize=(4.,4.))
+
+	lowG0b = [3e3, 5e3]
+	highG0b = [8e3,1e10]
+	ilow = np.where((fluxes>lowG0b[0])&(fluxes<lowG0b[1]))[0]
+	ihigh = np.where((fluxes>highG0b[0])&(fluxes<highG0b[1]))[0]
+	
+	LLOBS = 1e-3
+
+	ilow_surv = np.where((fluxes>lowG0b[0])&(fluxes<lowG0b[1])&(mdisc[tind]>LLOBS))[0]
+	ihigh_surv = np.where((fluxes>highG0b[0])&(fluxes<highG0b[1])&(mdisc[tind]>LLOBS))[0]
+	mdisc_lowg0 = mdisc[tind][ilow]
+	mdisc_highg0 = mdisc[tind][ihigh]
+
+	mdisc_copy = copy.copy(mdisc[tind])
+	mdisc_copy[np.where(mdisc_copy<1e-3)[0]] = 1e-3
+
+	mdisc_lowg0_s = mdisc[tind][ilow_surv]
+	mdisc_highg0_s = mdisc[tind][ihigh_surv]
+
+	X =  mdisc_lowg0
+	bins = np.append(np.sort(X),1.)
+	n, bins, patches = plt.hist(X, normed=True, histtype='step', cumulative=True, bins=bins, edgecolor='r')
+	
+	X =  mdisc_highg0
+	bins = np.append(np.sort(X), 1.)
+	n, bins, patches = plt.hist(X, normed=True, histtype='step', cumulative=True, bins=bins, edgecolor='b')
+	
+	
+	X =  mdisc_lowg0_s
+	bins = np.append(np.sort(X), 1.)
+	n, bins, patches = plt.hist(X, normed=True, histtype='step', cumulative=True, bins=bins, edgecolor='r', linestyle='dashed')
+	
+	X =  mdisc_highg0_s
+	bins = np.append(np.sort(X), 1.)
+	n, bins, patches = plt.hist(X, normed=True, histtype='step', cumulative=True, bins=bins, edgecolor='b', linestyle='dashed' )
+
+	l1, =plt.plot([],[], c='k', label='All')
+	l2, = plt.plot([],[], c='k',linestyle='dashed', label='$M_\mathrm{disc}>10^{-3}\, M_\odot$')
+	
+	c1, =plt.plot([],[], c='r',  label='$3000 \, G_0 < $ Projected $F_\mathrm{FUV}<5000 \, G_0$')
+	c2, =plt.plot([],[], c='b',  label='Projected $F_\mathrm{FUV}>8000 \, G_0$')
+
+	plt.xscale('log')
+	plt.xlim([1e-3,1e-2])
+	plt.ylim([0.,1.])
+	leg1 = plt.legend(handles=[l1,l2], fontsize=9, bbox_to_anchor=(0.9,0.35) ,bbox_transform=plt.gcf().transFigure)
+	plt.legend(handles=[c1,c2], loc=4, fontsize=9)
+	plt.gca().add_artist(leg1)
+	plt.xlabel('$M$ ($M_\odot$)')
+	plt.ylabel('$P(M_\mathrm{disc}<M)$')
+	plt.savefig('mdisc_cumfrac.pdf', bbox_inches='tight', format='pdf')
+
+	kstest1 = stats.ks_2samp(mdisc_lowg0_s, mdisc_highg0_s)
+	print('KS:', kstest1)
+	print('Sample sizes:', len(mdisc_lowg0_s), len(mdisc_highg0_s))
+	Ntest=100
+	pvals= []
+	for itest in range(Ntest):
+		kstest2=stats.ks_2samp(np.random.choice(mdisc_lowg0_s,size=subset,replace=False), np.random.choice(mdisc_highg0_s,size=subset,replace=False))
+		if kstest2.pvalue<0.05:
+			pvals.append(1.)
+		else:
+			pvals.append(0.0)
+	pvals = np.array(pvals)
+	print('Pvals:', np.mean(pvals))
+
+
+	kstest1 = stats.ks_2samp(mdisc_lowg0_s, mdisc_highg0_s)
+	print('KS:', kstest1)
+	print('Sample sizes:', len(mdisc_lowg0_s), len(mdisc_highg0_s))
+	subset = 100
+	Ntest=100
+	pvals= []
+	for itest in range(Ntest):
+		kstest2=stats.ks_2samp(np.random.choice(mdisc_lowg0_s,size=subset,replace=False), np.random.choice(mdisc_highg0_s,size=subset,replace=False))
+		if kstest2.pvalue<0.05:
+			pvals.append(1.)
+		else:
+			pvals.append(0.0)
+	pvals = np.array(pvals)
+	print('Chance of significant p-value for sample of {0} M_disc (M_disc > 1e-3 M_sol):'.format(subset), np.mean(pvals))
+
+
+
+	mdisc_lowg0 = mdisc_copy[ilow]
+	mdisc_highg0 = mdisc_copy[ihigh]
+
+	kstest1 = stats.ks_2samp(mdisc_lowg0, mdisc_highg0)
+	print('KS:', kstest1)
+	print('Sample sizes:', len(mdisc_lowg0), len(mdisc_highg0))
+	subset = 200
+	Ntest=100
+	pvals= []
+	for itest in range(Ntest):
+		s1 = np.random.choice(mdisc_lowg0,size=subset,replace=False)
+		s2 = np.random.choice(mdisc_highg0,size=subset,replace=False)
+		print('s1 number above LLIM:', len(np.where(s1>LLOBS)[0]))
+		print('s2 number above LLIM:', len(np.where(s2>LLOBS)[0]))
+		kstest2=stats.ks_2samp(s1,s2)
+		if kstest2.pvalue<0.05:
+			pvals.append(1.)
+		else:
+			pvals.append(0.0)
+	pvals = np.array(pvals)
+	print('Chance of significant p-value for sample of {0} M_disc:'.format(subset), np.mean(pvals))
+
+	"""plt.figure(figsize=(4.,4.))
+
+
+	colM = plt.cm.get_cmap('RdYlBu')
+	sc=plt.scatter(fluxes, rdisc[tind], marker='+',s =MS, c=m_d,  vmin=0.5, vmax=2.0, cmap=colM)
+	plt.colorbar(sc, label='$m_\\mathrm{star}$ ($M_\\odot$)')
+
+	plt.xlabel('Projected $F_\\mathrm{FUV}$ ($G_0$)')
+	plt.ylabel('$R_\\mathrm{disc}$ (au)')
+	plt.xscale('log')
+	plt.xlim([1e3,3e4]) 
+	plt.ylim([0.,100.])
+	plt.savefig('projg0rdisc.pdf', bbox_inches='tight', format='pdf')"""
+
+	plt.show()
+
+	"""
+	icol=0
+	for iun in unique_a:
+
+		a_inds = np.where(assoc==iun)[0]
+		
+
+		plt.scatter(fluxes[a_inds], rdisc[tind][a_inds], marker='+', c=CB_color_cycle[icol])
+		icol+=1
+
+	plt.xlabel('Projected FUV Flux ($G_0$)')
+	plt.ylabel('$R_\\mathrm{disc}$ (au)')
+	plt.xlim([1e3, 2e4])
+	plt.ylim([0., 100.])
+	plt.savefig('disccheck_r.pdf', bbox_inches='tight', format='pdf')
+
+	plt.show()"""
+
+def plot_g0mdisc(simulation, time=0.0, mfilt=1.0, wext=False, g0=1.6e-3, plot=False, force=False, infile=None):
+	if infile==None:
+		INFILE = simulation.out
+		calc=True
+	else:
+		INFILE = infile
+		calc=False
+	
+	tind=  0
+	if (not os.path.isfile(INFILE+'_projg0_discs.npy') or \
+	not os.path.isfile(INFILE+'_projg0_OBstars.npy') or force) and calc:
+		
+		if not wext:
+			pinds = copy.copy(simulation.photoevap_inds)
+			mdisc = np.swapaxes(copy.copy(simulation.phot_m[pinds]),0,1)
+			rdisc = np.swapaxes(copy.copy(simulation.phot_r[pinds]),0,1)
+			g0vals = np.swapaxes(copy.copy(simulation.FUV[pinds]),0,1)
+		else:
+			pinds = copy.copy(simulation.photoevap_inds)
+			mdisc =np.swapaxes(copy.copy(simulation.phot_wext_m[pinds]),0,1)
+			rdisc =np.swapaxes(copy.copy(simulation.phot_wext_r[pinds]),0,1)
+			g0vals = np.swapaxes(copy.copy(simulation.FUVwext[pinds]),0,1)
+
+		if len(simulation.assoc.shape)>=1:
+			assoc = copy.copy(simulation.assoc[pinds])
+		else:
+			assoc = np.array(np.ones(len(pinds)), dtype=int)
+
+
+
+		print('Subset size:', len(pinds))
+		MS= 1
+
+		"""print(g0[:][0])
+		print(mdisc[:][0])
+
+
+	
+		print(g0[:][1])
+		print(mdisc[:][1])
+
+
+		print(g0[:][2])
+		print(mdisc[:][2])
+		exit()"""
+	
+		t = copy.copy(simulation.t)
+		m_d = copy.copy(simulation.m)[pinds]
+		tunits, munits, runits = copy.copy(simulation.units)
+
+		tarch = t*tunits*s2myr
+		tind = np.argmin(np.absolute(tarch-time))
+		tval = tarch[tind]
+		print('Time:', tarch[tind])
+		m_d *= munits*kg2sol
+
+		
+		g0nonz = np.where(np.swapaxes(g0vals,0,1)[0]>1e-1)[0]
+		tg0nonz = t[g0nonz]
+		g0average =  np.trapz(g0vals[g0nonz],tg0nonz, axis=0)/(tg0nonz[-1]-tg0nonz[0])
+
+		pres_hist = g0vals[tind]/g0average
+	
+		print('Shapes:', g0average.shape, g0vals[tind].shape, pres_hist.shape)
+
+		mall=  munits*kg2sol*copy.copy(simulation.m)
+		im_b =np.where(mall>=1.0)[0]
+		m_b = mall[im_b]
+		im_m = np.where(mall>=30.0)[0]
+
+		rt_d = runits*m2pc*copy.copy(simulation.r)[tind][pinds]
+		rt_b = runits*m2pc*copy.copy(simulation.r)[tind][im_b]
+		rt_m = runits*m2pc*copy.copy(simulation.r)[tind][im_m]
+
+		ctmp = cluster_calcs.empirical_centre(rt_d, 10.0, 2, 40, 2)
+
+		
+		rt_i = runits*m2pc*copy.copy(simulation.r)[0][pinds]
+
+		
+		rt_xf, rt_yf, rt_zf = np.swapaxes(rt_d, 0,1)
+		rtf_xm, rtf_ym, rtf_zm = np.swapaxes(rt_m, 0,1)
+		rt_x, rt_y, rt_z = np.swapaxes(rt_i, 0,1)
+
+		vt_i = 1e-3*runits*copy.copy(simulation.v[0])[pinds]/tunits
+		vtf  = 1e-3*runits*copy.copy(simulation.v[tind])[pinds]/tunits
+		vtf_m = 1e-3*runits*copy.copy(simulation.v)[tind][im_m]/tunits
+		
+		vt_x, vt_y, vt_z = np.swapaxes(vt_i, 0,1)
+		vtf_x, vtf_y, vtf_z = np.swapaxes(vtf,0,1)
+		vtfm_x, vtfm_y, vtfm_z = np.swapaxes(vtf_m,0,1)
+		unique_a = np.unique(assoc)
+		
+
+
+		Lums = get_FUVluminosities(m_b)
+
+		fluxes  = cluster_calcs.flux(rt_d*1e2/m2pc, Lums,rt_b*1e2/m2pc,2)	
+		fluxes /= g0
+
+		xt_d, yt_d, zt_d = np.swapaxes(rt_d, 0,1)
+		xt_b, yt_b, zt_b = np.swapaxes(rt_b, 0,1)
+
+		print(np.amax(fluxes))
+		g0vals_t = g0vals[tind]
+		
+		
+		
+
+		np.save(simulation.out+'_projg0_discs', np.array([g0vals, fluxes, mdisc, rdisc, xt_d, yt_d, zt_d , m_d, assoc]))
+		np.save(simulation.out+'_projg0_OBstars', np.array([xt_b, yt_b, zt_b, m_b]))
+	else:
+		g0vals, fluxes, mdisc, rdisc, xt_d, yt_d, zt_d , m_d, assoc = np.load(INFILE+'_projg0_discs.npy')
+		#print(dmass, g0proj)
+		#print(dmass.shape, g0proj.shape)
+		#plt.scatter(g0proj, dmass)NFILE+'_projg0_discs.npy')
+		rt_d = np.swapaxes(np.array([xt_d,yt_d, zt_d]),0,1)
+		xt_b, yt_b, zt_b, m_b = np.load(INFILE+'_projg0_OBstars.npy')
+		tind=-1
+	#mbig = np.where(m>mfilt)[0]
+	if plot:
+
+		unique_a = np.unique(assoc)
+		print(unique_a)
+		
+		mpl_cols = ['k', 'r', 'orange', 'lawngreen', 'brown', 'b']
+		CB_color_cycle = ['#377eb8', '#ff7f00', '#4daf4a','#f781bf', '#a65628', '#984ea3','#999999', '#e41a1c', '#dede00']
+		plt.rc('text', usetex=True)
+		plt.rc('font', family='serif')
+	
+
+		"""plt.figure(figsize=(4.,4.))
+
+		icol=0
+		for iun in unique_a:
+	
+			a_inds = np.where(assoc==iun)[0]
+			
+	
+			plt.scatter(g0vals[tind][a_inds], mdisc[tind][a_inds], marker='+', c=CB_color_cycle[icol])
+			icol+=1
+
+		plt.xscale('log')
+		plt.yscale('log')
+		plt.xlim([5e2, 2e4])
+		plt.ylim([1e-7, 2e-2])
+		plt.ylabel('Disc Mass ($M_\\odot$)')
+		plt.xlabel('FUV Flux ($G_0$)')
+		plt.savefig(INFILE+'_g0vmdisc_{0}.pdf'.format('fudge'), bbox_inches='tight', format='pdf')
+	
+		plt.show()
+
+		
+		plt.figure(figsize=(4.,4.))
+	
+		icol=0
+		for iun in unique_a:
+			a_inds = np.where(assoc==iun)[0]
+	
+			plt.scatter(fluxes[a_inds], mdisc[tind][a_inds], marker='+', c=CB_color_cycle[icol])
+			icol+=1
+
+		plt.xscale('log')
+		plt.yscale('log')
+		plt.xlim([1e3, 2e4])
+		plt.ylim([1e-7, 2e-2])
+		plt.ylabel('Disc Mass ($M_\\odot$)')
+		plt.xlabel('Projected FUV Flux ($G_0$)')
+		plt.savefig(INFILE+'_projg0vmdisc_{0}.pdf'.format('fudge'), bbox_inches='tight', format='pdf')
+	
+		plt.show()"""
+
+
+
+		DMLIM=1e-5
+		plt.rc('text', usetex=True)
+		plt.rc('font', family='serif')
+
+		bin_divs = [3.0, 3.35, 3.5, 3.75, 4.0, 4.35,4.7]
+	
+		surv_frac = np.zeros(len(bin_divs)-1)
+
+		for idiv in range(len(bin_divs)-1):
+			in_div =  np.where((np.log10(g0vals[tind])>bin_divs[idiv])&(np.log10(g0vals[tind])<bin_divs[idiv+1]))[0]
+			dm_div = mdisc[tind][in_div]
+			nsurv = len(np.where(dm_div>DMLIM)[0])
+			print('Survival fraction {0}/{1}'.format(nsurv, len(in_div)))
+			if len(in_div)>0.:
+				surv_frac[idiv] = float(nsurv)/float(len(in_div))
+			w = bin_divs[idiv+1]-bin_divs[idiv]
+			plt.bar(bin_divs[idiv],surv_frac[idiv], width=w, edgecolor=mpl_cols[idiv],color='None')
+
+
+		#print(dmass, g0proj)
+		#print(dmass.shape, g0proj.shape)
+		#plt.scatter(g0proj, dmass)
+		#plt.xscale('log')
+		#plt.yscale('log')
+		plt.xlim([3.0, 4.7])
+		plt.ylabel('$N_\mathrm{disc}/N_\mathrm{tot}$')
+		plt.xlabel('$\log(\mathrm{FUV flux})$  ($G_0$)')
+		plt.savefig(simulation.out+'_g0_1.pdf', bbox_inches='tight', format='pdf')
+
+		plt.show()
+
+	
+		fig, (ax1,ax2)= plt.subplots(1,2,figsize=(9.,4.))
+	
+		surv_frac_2 = np.zeros(len(bin_divs)-1)
+		xguar = []
+		
+		for idiv in range(len(bin_divs)-1):
+			if idiv<len(bin_divs)-2:
+				in_div =  np.where((np.log10(fluxes)>bin_divs[idiv])&(np.log10(fluxes)<bin_divs[idiv+1]))[0]
+			else:
+				print('IDIV:', idiv) 
+				in_div =  np.where((np.log10(fluxes)>bin_divs[idiv]))[0]
+				
+			dm_div = mdisc[tind][in_div]
+			nsurv = len(np.where(dm_div>DMLIM)[0])
+			print('Survival fraction {0}/{1}'.format(nsurv, len(in_div)))
+			if len(in_div)>0.:
+				surv_frac_2[idiv] = float(nsurv)/float(len(in_div))
+			w = bin_divs[idiv+1]-bin_divs[idiv]
+			ax1.bar(bin_divs[idiv],surv_frac_2[idiv], width=w, edgecolor=mpl_cols[idiv],color='None',linewidth=BARLINE)
+			
+			xguar.append(bin_divs[idiv]+w/2.)
+
+		yguar = [0.39, 0.35, 0.31, 0.27, 0.22, 0.18]
+
+		#ax1.scatter(xguar, yguar, marker='+',linewidths = BARMARK,s=BARPOINT, color='k')
+		ax1.set_ylim([0.,0.7])
+		ax1.set_xlim([3.0, 4.7])
+
+		#print(dmass, g0proj)
+		#print(dmass.shape, g0proj.shape)
+		#plt.scatter(g0proj, dmass)
+		#plt.xscale('log')
+		#plt.yscale('log')
+		ax1.set_ylabel('$N_\mathrm{disc}/N_\mathrm{tot}$')
+		ax1.set_xlabel('$\log(\mathrm{projected } \, F_\mathrm{FUV})$  ($G_0$)')
+		#plt.savefig(INFILE+'_g0bar.pdf', bbox_inches='tight', format='pdf')
+	
+		#plt.show()
+
+
+		fsize=15.0
+
+		ctmp = cluster_calcs.empirical_centre(rt_d, 10.0, 2, 40, 2)
+
+		#plt.figure(figsize=(4.,4.))
+
+
+		for idiv in range(len(bin_divs)-1):
+			in_div =  np.where((np.log10(fluxes)>bin_divs[idiv])&(np.log10(fluxes)<bin_divs[idiv+1]))[0]
+			dm_div = mdisc[tind][in_div]
+			isurv = np.where(dm_div>DMLIM)[0]
+			idest = np.where(dm_div<=DMLIM)[0]
+			nsurv = len(isurv)
+			print('Disc fraction: {0}/{1}'.format(nsurv, len(in_div)))
+			if len(in_div)>0.:
+				surv_frac[idiv] = float(nsurv)/float(len(in_div))
+			w = bin_divs[idiv+1]-bin_divs[idiv]
+			xtss = xt_d[in_div]
+			ytss = yt_d[in_div]
+			ax2.scatter(xtss[isurv]-ctmp[0],ytss[isurv]-ctmp[1], c=mpl_cols[idiv], edgecolors=mpl_cols[idiv], s=7)
+			ax2.scatter(xtss[idest]-ctmp[0],ytss[idest]-ctmp[1], c='None', edgecolors=mpl_cols[idiv], s=7)
+
+		im = np.where(m_b>10.0)[0]
+		ax2.scatter(xt_b[im]-ctmp[0], yt_b[im]-ctmp[1], marker='*', s=80, c='k')
+	
+		ax2.set_ylabel('$y$ (pc)')
+		ax2.set_xlabel('$x$  (pc)')
+		if fsize!=None:
+			ax2.set_xlim([-fsize, fsize])
+			ax2.set_ylim([-fsize, fsize])
+
+		plt.savefig(INFILE+'_g0proposal.pdf', bbox_inches='tight', format='pdf')
+
+		plt.show()
+
+		"""plt.figure(figsize=(4.,4.))
+	
+		plt.scatter(mdisc[0], mdisc[tind], marker='+', c='k')
+
+		#plt.xscale('log')
+		#plt.yscale('log')
+		#plt.xlim([3e1, 3e3])
+		#plt.ylim([1e-7, 2e-2])
+		plt.ylabel('Final Disc Mass ($M_\\odot$)')
+		plt.xlabel('Initial Disc Mass ($M_\\odot$)')
+	
+		plt.show()
+
+
+	
+		plt.figure(figsize=(4.,4.))
+	
+		plt.scatter(m,mdisc[0], marker='+', c='k')
+
+		#plt.xscale('log')
+		#plt.yscale('log')
+		#plt.xlim([3e1, 3e3])
+		#plt.ylim([1e-7, 2e-2])
+		plt.ylabel('Initial Disc Mass ($M_\\odot$)')
+		plt.xlabel('Stellar Mass ($M_\\odot$)')
+	
+		plt.show()"""
+
+	return tval, tind, g0vals, fluxes, mdisc, rdisc, xt_d, yt_d, zt_d , m_d, assoc, xt_b, yt_b, zt_b, m_b
+
+
+
+def plot_g0mdisc_tseries(simulation, times=0.0,wext=False, g0=1.6e-3, plot=False, force=False, infile=None):
+	
+	plt.rc('text', usetex=True)
+	plt.rc('font', family='serif')
+	
+
+	plt.figure(figsize=(6.,6.))
+	lines = ['solid', 'dashed', 'dashdot', 'dotted']
+	mpl_cols = ['k']*10#['k', 'r', 'orange', 'lawngreen', 'brown', 'b']
+	it =0
+	xguar = []
+	for t in times:
+		tval, tind, g0vals, fluxes, mdisc, rdisc, xt_d, yt_d, zt_d , m_d, assoc, xt_b, yt_b, zt_b, m_b =  plot_g0mdisc(simulation, time=t, wext=wext, plot=False, force=True)
+
+
+		DMLIM=1e-6
+		plt.rc('text', usetex=True)
+		plt.rc('font', family='serif')
+
+		bin_divs = [3.0, 3.35, 3.5, 3.75, 4.0, 4.35,4.7, 5.0, 5.5]
+	
+		surv_frac = np.zeros(len(bin_divs)-1)
+
+
+	
+		surv_frac_2 = np.zeros(len(bin_divs)-1)
+		
+		for idiv in range(len(bin_divs)-1):
+			if idiv<len(bin_divs)-2:
+				in_div =  np.where((np.log10(fluxes)>bin_divs[idiv])&(np.log10(fluxes)<bin_divs[idiv+1]))[0]
+			else:
+				in_div =  np.where((np.log10(fluxes)>bin_divs[idiv]))[0]
+			dm_div = mdisc[tind][in_div]
+			nsurv = len(np.where(dm_div>DMLIM)[0])
+			print('Survival fraction {0}/{1}'.format(nsurv, len(in_div)))
+			if len(in_div)>0.:
+				surv_frac_2[idiv] = float(nsurv)/float(len(in_div))
+			w = bin_divs[idiv+1]-bin_divs[idiv]
+			plt.bar(bin_divs[idiv],surv_frac_2[idiv], width=w, edgecolor=mpl_cols[idiv],color='None', linestyle=lines[it],linewidth=BARLINE)
+			
+			if it==0:
+				xguar.append(bin_divs[idiv]+w/2.)
+
+		plt.plot([],[], linestyle=lines[it], label = '$t=%.2lf$ Myr'%(tval), color='k')
+		it+=1
+
+	yguar = [0.39, 0.35, 0.31, 0.27, 0.22, 0.18]
+
+	#plt.scatter(xguar, yguar, marker='+',linewidths = BARMARK,s=BARPOINT,  color='k')
+	plt.ylim([0.,1.0])
+	plt.xlim([3.0, 5.5])
+
+	plt.legend(loc=2)
+
+	#print(dmass, g0proj)
+	#print(dmass.shape, g0proj.shape)
+	#plt.scatter(g0proj, dmass)
+	#plt.xscale('log')
+	#plt.yscale('log')
+	plt.ylabel('$N_\mathrm{disc}/N_\mathrm{tot}$')
+	plt.xlabel('$\log(\mathrm{projected }\,  F_\mathrm{FUV})$  ($G_0$)')
+	plt.savefig('g0bartseries.pdf', bbox_inches='tight', format='pdf')
+	
+	plt.show()
+
+
+
+	return None
+
+
+def plot_disc2d(simulation,rmax=12.5, centre=(.0,.0), mfilt=1.0,time=0.0, ptype='radius', size_fact=4e4, wext=False):
+
+
+	t = copy.copy(simulation.t)
+	r = copy.copy(simulation.r)
+	m = copy.copy(simulation.m)
+
+	tunits, munits, runits = simulation.units
+
+	tarch = t*tunits*s2myr
+	r *= runits*m2pc
+	m *= munits*kg2sol
+	
+	tind = np.argmin(np.absolute(tarch-time))
+
+
+	rswitch = np.swapaxes(r,0,1)
+
+	rout_all = np.ones((len(m),len(tarch)))*100.0
+
+	def psize_calc(dmass):
+		return size_fact*dmass
+
+	if not wext:
+		pinds = copy.copy(simulation.photoevap_inds)
+		mdisc = np.swapaxes(copy.copy(simulation.phot_m[pinds]),0,1)
+		rdisc = np.swapaxes(copy.copy(simulation.phot_r[pinds]),0,1)
+		g0vals = np.swapaxes(copy.copy(simulation.FUV[pinds]),0,1)
+	else:
+		pinds = copy.copy(simulation.photoevap_inds)
+		mdisc =np.swapaxes(copy.copy(simulation.phot_wext_m[pinds]),0,1)
+		rdisc =np.swapaxes(copy.copy(simulation.phot_wext_r[pinds]),0,1)
+		g0vals = np.swapaxes(copy.copy(simulation.FUVwext[pinds]),0,1)
+
+	print('Not implemented correctly...')
+	exit()
+
+
+	if ptype=='radius':
+		print('Assigning radius evolution...')	
+		plot_vals = rdisc
+	if ptype=='mass':
+		print('Assigning mass evolution...')	
+		plot_vals = mdisc
+	elif ptype=='g0':
+		print('Assigning G0...')	
+		plot_vals = simulation.FUV
+	elif ptype=='g0m':
+		
+		plot_vals = np.swapaxes(simulation.FUV,0,1)
+		psize = np.swapaxes(psize_calc(simulation.phot_m),0,1)
+
+		print(plot_vals.shape, psize.shape)
+	else:
+		print('Plot type not recognised: "{0}"'.format(ptype))
+		exit()
+
+	print('Evolution assigned.')
+
+	rmean = np.mean(plot_vals, axis=0)
+
+	rswap = np.swapaxes(r, 0,2)
+	#rswap = np.swapaxes(rswap, 1,2)
+	x = rswap[0]
+	y = rswap[1]
+	z = rswap[2]
+
+
+	x= np.swapaxes(x,0,1)
+	y = np.swapaxes(y,0,1)
+	z = np.swapaxes(z,0,1)
+
+
+	x -= centre[0]
+	y -= centre[1]
+
+	rout_all = np.swapaxes(rout_all, 0,1)
+
+
+	cm = plt.cm.get_cmap('autumn')
+	# create the figure
+	plt.rc('axes',edgecolor='k')
+	
+	plt.rc('text', usetex=True)
+	plt.rc('font', family='serif')
+	
+	fig, ax = plt.subplots()
+
+	# create the first plot
+	biginds = np.where(m>mfilt)[0]
+	massinds = np.where(m>30.0)[0]
+	xt = x[tind][biginds]
+	yt = y[tind][biginds]
+	zt = z[tind][biginds]
+	zsort = np.argsort(zt)
+	xt = xt[zsort]
+	yt = yt[zsort]
+
+	if ptype=='radius':
+		point=ax.scatter(xt, yt, s=20,  c=plot_vals[tind][biginds][zsort], vmin=20.0, vmax=100.0, cmap=cm)
+	if ptype=='mass':
+		point=ax.scatter(xt, yt,  s=20,  c=plot_vals[tind][biginds][zsort],norm=LogNorm(vmin=1e-6, vmax=1e-1), cmap=cm)
+	elif ptype=='g0':
+		point=ax.scatter(xt, yt,  s=20,  c=plot_vals[tind][biginds][zsort], norm=LogNorm(vmin=5e1, vmax=1e4), cmap=cm)
+	elif ptype=='g0m':
+		point=ax.scatter(xt, yt,  c=plot_vals[tind][biginds][zsort], norm=LogNorm(vmin=5e1, vmax=1e4), cmap=cm, s=psize[tind][biginds])
+	pointb =ax.scatter(x[tind][massinds], y[tind][massinds],s=50., c='c', zorder=3)
+
+	ax.legend()
+	ax.set_xlim([-rmax, rmax])
+	ax.set_ylim([-rmax, rmax])
+
+
+	ax.set_axis_bgcolor('black')
+	"""ax.tick_params(axis='x',colors='white')
+	ax.tick_params(axis='y',colors='white')"""
+	ax.get_xaxis().set_tick_params(direction='out', width=1)
+	ax.get_yaxis().set_tick_params(direction='out', width=1)
+
+	ax.set_xlabel(r'x (pc)', color='k')
+	ax.set_ylabel(r'y (pc)', color='k')
+	ax.set_axis_bgcolor('black')
+
+	cb1 = fig.colorbar(point)
+	if ptype=='g0' or ptype=='g0m':
+		cb1.set_label('FUV Flux ($G_0$)')
+	elif ptype=='radius':
+		cb1.set_label('Disc Radius (au)')
+	elif ptype=='mass':
+		cb2.set_label('Disc mass ($M_\\odot$)')
+
+	if ptype=='g0m':
+		psize_calc(simulation.phot_m)
+		l1 = plt.scatter([],[], s=psize_calc(1e-4), edgecolors='none')
+		l2 = plt.scatter([],[], s=psize_calc(1e-3), edgecolors='none')
+		l3 = plt.scatter([],[], s=psize_calc(1e-2), edgecolors='none')
+
+		labels = ['$10^{-4}$', '$10^{-3}$', '$10^{-2}$']
+
+		leg = plt.legend([l1, l2, l3], labels, ncol=3, frameon=True, fontsize=12, loc ='best', title='Disc Masses ($M_\\odot$)', scatterpoints=1)
+	
+
+	plt.savefig('discsnap_{0}_{1}.pdf'.format(ptype,tarch[tind]), bbox_inches='tight', format='pdf')
+	
+	plt.show()
+
+def time_inds(time_arr, dt=0.1):
+	inds = [0]
+	tprev = 0.0
+	for itime in range(len(time_arr)):
+		if tprev+dt<=time_arr[itime]:
+			inds.append(itime)
+			tprev = time_arr[itime]
+	
+	return np.array(inds, dtype=int)
+
+def prof_evol(simulation, rout=13.0, autocent=True, radcentre=10.0):
+
+	
+	t = copy.copy(simulation.t)
+	r = copy.copy(simulation.r)
+	v = copy.copy(simulation.v)
+	m = copy.copy(simulation.m)
+
+	tunits, munits, runits = simulation.units
+
+	tarch = t*tunits*s2myr
+	r *= runits*m2pc
+	m *= munits*kg2sol
+	v *= (runits/tunits)*1e-3
+	
+	nres =1000
+
+	if not os.path.isfile(simulation.out+'_rprof.npy') or not os.path.isfile(simulation.out+'_rparams.npy'):
+		rparams = np.zeros((len(tarch), 3))
+		rprofile = np.zeros((len(tarch), 2, nres))
+
+		print('Fitting profiles...')
+
+		for it in range(len(tarch)):
+			rproj = np.swapaxes(np.swapaxes(r[it],0,1)[:2], 0,1)
+			if autocent:
+				ctmp = cluster_calcs.empirical_centre(r[it], radcentre, 2, 20, 3)
+			else:
+				ctmp = np.array([0.,0.])
+			rvals = np.linalg.norm(rproj-ctmp,axis=1)
+			rparams[it] = fit_elson(rvals, nres, rmax=rout, init_guess=np.array([5.8, 7.5]))
+			print('Params at t={0}:'.format(tarch[it]), rparams[it])
+			hst, be = np.histogram(rvals, nres)
+			rprofile[it][0] = (be[:-1]+be[1:])/2.
+			diff =  (be[1:]- be[:-1])
+			rprofile[it][1] = hst/(2.*np.pi*rprofile[it][0]*diff)
+
+		np.save(simulation.out+'_rprof', rprofile)
+		np.save(simulation.out+'_rparams', rparams)
+	else:
+		rprofile = np.load(simulation.out+'_rprof.npy')
+		rparams = np.load(simulation.out+'_rparams.npy')
+
+
+	if not os.path.isfile(simulation.out+'_vdisp.npy'):
+		vdisp = np.zeros((len(tarch), 3))
+		"""vtst = np.swapaxes(v, 0,1)
+		rtst = np.swapaxes(r, 0,1)
+		
+		for iv in range(max(len(v), 4)):
+			vtest(vtst[iv]*1e3, rtst[iv]/m2pc, tarch/s2myr)
+		exit()"""
+		for it in range(len(tarch)):
+			vx, vy, vz  = np.swapaxes(v[it],0,1)
+			sigma_x = np.sqrt(np.mean(vx**2.))
+			sigma_y = np.sqrt(np.mean(vy**2.))
+			sigma_z = np.sqrt(np.mean(vz**2.))
+			vdisp[it] = np.array([sigma_x, sigma_y, sigma_z])
+		np.save(simulation.out+'_vdisp', vdisp)
+	else:
+		vdisp = np.load(simulation.out+'_vdisp.npy')
+
+	cumact = np.zeros(rprofile.shape)
+	cummod = np.zeros(rprofile.shape) 
+
+
+	for it in range(len(rprofile)):
+		cummod[it][0] = rprofile[it][0]
+		cumact[it][0] = rprofile[it][0]
+		ansig = rparams[it][2]*np.power(1.+np.power(rprofile[it][0]/rparams[it][1], 2.), -rparams[it][0]/2.)
+		for ir in range(len(rprofile[it][0])):
+			cumact[it][1][ir]= np.trapz(2.*np.pi*rprofile[it][0][:ir]*rprofile[it][1][:ir], rprofile[it][0][:ir])
+			cummod[it][1][ir] = np.trapz(2.*np.pi*rprofile[it][0][:ir]*ansig[:ir], rprofile[it][0][:ir])
+
+
+	rspace = np.linspace(0.0, 20.0, 100)
+	ansigfix = np.power(1.+np.power(rspace/7.5, 2.), -5.8/2.)
+	cumfix = np.zeros(len(rspace))
+	for ir in range(len(rspace)):
+		cumfix[ir] = np.trapz(2.*np.pi*rspace[:ir]*ansigfix[:ir], rspace[:ir])
+
+	cumfix *= 3e4/cumfix[-1]
+	
+	fig, ax = plt.subplots()
+
+	# create the first plot
+	
+	
+	ax.set_ylabel('Cumulative No. Stars', color='k')
+	ax.set_xlabel('Radius (pc)', color='k')
+
+	ttext = ax.text(0.05, 0.95, "$t = $ {0} Myrs".format(0.0), transform=ax.transAxes, color='k')
+
+	
+	def update_axes(n, cmod, cact, cfix, rspace, rparams, sigv, times,ax):
+		ax.cla()
+		ax.plot(rspace, cfix, 'k')
+		ax.plot(cmod[n][0], cmod[n][1], 'r')
+		ax.plot(cact[n][0], cact[n][1], 'g')
+		ttext = ax.text(0.05, 0.95, "$t =${:03.2f} Myrs".format(times[n]), transform=ax.transAxes, color='k')
+		ttext = ax.text(0.25, 0.95, "$\\gamma = ${:03.2f}".format(rparams[n][0]), transform=ax.transAxes, color='k')
+		ttext = ax.text(0.45, 0.95, "$a = ${:03.2f} pc".format(rparams[n][1]), transform=ax.transAxes, color='k')
+		ttext = ax.text(0.65, 0.95, "$\\Sigma_0=$%.2lf pc$^{-2}$"%(rparams[n][2]), transform=ax.transAxes, color='k')
+		
+		ttext = ax.text(0.05, 0.85, "$\\sigma_x = ${:03.2f} km/s".format(vdisp[n][0]), transform=ax.transAxes, color='k')
+		ttext = ax.text(0.25, 0.85, "$\\sigma_y = ${:03.2f} km/s".format(vdisp[n][1]), transform=ax.transAxes, color='k')
+		ttext = ax.text(0.45, 0.85, "$\\sigma_z = ${:03.2f} km/s".format(vdisp[n][2]), transform=ax.transAxes, color='k')
+		
+		ax.set_xlim([np.amin(rspace), np.amax(rspace)])
+		ax.set_ylim([0.0, 3.2e4])
+		ax.set_xlim([0.0,30.0])
+		ax.set_ylabel('Cumulative No. Stars', color='k')
+		ax.set_xlabel('Radius (pc)', color='k')
+
+		ax.legend()
+		return None
+	
+	nstep =1
+	ani=animation.FuncAnimation(fig, update_axes, len(tarch[::nstep]), fargs=( cummod[::nstep], cumact[::nstep],  cumfix, rspace,rparams[::nstep], vdisp[::nstep], tarch[::nstep],ax))
+
+	# make the movie file demo.mp4
+
+	writer=animation.writers['ffmpeg'](fps=1)
+	dpi = 500
+	ani.save(simulation.out+'_density_profile.mp4',writer=writer,dpi=dpi)
+	
+	plt.show()
+
+
+	return None
+
+def prof_snap(simulation, rout=13.0, autocent=True, radcentre=10.0, time=0.0):
+
+	
+	t = copy.copy(simulation.t)
+	r = copy.copy(simulation.r)
+	v = copy.copy(simulation.v)
+	m = copy.copy(simulation.m)
+
+	tunits, munits, runits = simulation.units
+
+	tarch = t*tunits*s2myr
+	r *= runits*m2pc
+	m *= munits*kg2sol
+	v *= (runits/tunits)*1e-3
+
+	
+	it = np.argmin(np.absolute(tarch-time))
+	
+	nres =1000
+
+	rprofile = np.zeros((2, nres))
+
+	print('Fitting profiles...')
+
+	rproj = np.swapaxes(np.swapaxes(r[it],0,1)[:2], 0,1)
+	if autocent:
+		ctmp = cluster_calcs.empirical_centre(r[it], radcentre, 2, 20, 3)
+	else:
+		ctmp = np.array([0.,0.])
+	rvals = np.linalg.norm(rproj-ctmp,axis=1)
+	rparams= fit_elson(rvals, nres, rmax=rout, init_guess=np.array([4.0, 0.2]))
+
+	
+	print('Params at t={0}: a={1}, gamma={2}, n0={3}'.format(tarch[it], rparams[1], rparams[0], rparams[2]))
+	hst, be = np.histogram(rvals, nres)
+	rprofile[0] = (be[:-1]+be[1:])/2.
+	diff =  (be[1:]- be[:-1])
+	rprofile[1] = hst/(2.*np.pi*rprofile[0]*diff)
+
+	cumact = np.zeros(rprofile.shape)
+	cummod = np.zeros(rprofile.shape) 
+
+
+	
+	cummod[0] = rprofile[0]
+	cumact[0] = rprofile[0]
+	ansig = rparams[2]*np.power(1.+np.power(rprofile[0]/rparams[1], 2.), -rparams[0]/2.)
+	for ir in range(len(rprofile[0])):
+		cumact[1][ir]= np.trapz(2.*np.pi*rprofile[0][:ir]*rprofile[1][:ir], rprofile[0][:ir])
+		cummod[1][ir] = np.trapz(2.*np.pi*rprofile[0][:ir]*ansig[:ir], rprofile[0][:ir])
+
+
+	rspace = np.linspace(0.0, 20.0, 100)
+	ansigfix = np.power(1.+np.power(rspace/0.2, 2.), -2.)
+	cumfix = np.zeros(len(rspace))
+	for ir in range(len(rspace)):
+		cumfix[ir] = np.trapz(2.*np.pi*rspace[:ir]*ansigfix[:ir], rspace[:ir])
+
+	cumfix *= 8e3/cumfix[-1]
+	
+
+	plt.rc('text', usetex=True)
+	plt.rc('font', family='serif')
+	fig = plt.figure(figsize=(5.,5.))
+
+	# create the first plot
+	
+	
+	plt.ylabel('Cumulative No. Stars', color='k')
+	plt.xlabel('Projected radius (pc)', color='k')
+
+	
+
+	#plt.plot(rspace, cumfix, 'y', label='Observed')
+
+	plt.plot(cumact[0], cumact[1], 'k', label='$N$-body model')
+	
+	cdens_n = rparams[2]
+	cdens_i = int(np.log10(rparams[2]))
+	while cdens_n>10.0:
+		cdens_n/=10.0
+
+	plt.plot(cummod[0], cummod[1], 'r', label='$a=%.2lf$ pc, $\gamma=%.2lf$, $n_0 =%.1lf \\times 10^{%d}$ pc$^{-3}$'%(rparams[1], rparams[0], cdens_n, cdens_i))
+		
+	plt.ylim([0.0, 8000.0])
+	plt.xlim([0.0,rout])
+
+	plt.legend(loc='best', prop={'size': 10})
+	
+	# make the movie file demo.mp4
+	plt.savefig(simulation.out+'_profsnap.pdf', bbox_inches='tight', format='pdf')
+	
+	plt.show()
+
+
+	return None
+
+
+
+
+
+def plot_hmr(simulation, dim=2, plot=True, autocent=False, radcentre=5.0, sp_time=0.1):
+
+	
+	t = copy.copy(simulation.t)
+	r = copy.copy(simulation.r)
+	v = copy.copy(simulation.v)
+	m = copy.copy(simulation.m)
+
+	tunits, munits, runits = simulation.units
+
+	tarch = t*tunits*s2myr
+	r *= runits*m2pc
+	m *= munits*kg2sol
+	v *= (runits/tunits)*1e-3
+	
+	
+	if sp_time!=None:
+		list_indices = time_inds(tarch, dt=sp_time)
+		nsnaps = len(list_indices)
+	else:
+		nsnaps = len(tarch)
+		list_indices = np.arange(nsnaps)
+
+	
+	rproj = np.swapaxes(np.swapaxes(r, 0,2)[:dim],0,2)
+
+	
+
+	if not os.path.isfile(simulation.out+'_HM.npy'):
+		t_return = np.zeros(nsnaps)
+		r_hm = np.zeros(nsnaps)
+		ival = 0
+		for it in list_indices:
+			t_return[ival] = tarch[it]
+			if autocent:
+				ctmp = cluster_calcs.empirical_centre(r[it], radcentre, 2, 20, 3)
+			else:
+				ctmp = np.array([0.,0.])
+			rmags = np.linalg.norm(rproj[it]-ctmp,axis=1)
+			irsrt = np.argsort(rmags)
+			rsort = rmags[irsrt]
+			msort = m[irsrt]
+			cumdist = np.cumsum(msort)
+			ncumdist = cumdist/cumdist[-1]
+			frac_func = interpolate.interp1d(ncumdist, rsort)
+			r_hm[ival] = frac_func(0.5)
+			print('At {0} Myr HM: {1}'.format(tarch[it], r_hm[ival]))
+			ival +=1
+
+		np.save(simulation.out+'_HM', np.array([t_return, r_hm]))
+	else:
+		t_return, r_hm = np.load(simulation.out+'_HM.npy')
+	
+	if plot:
+		plt.rc('text', usetex=True)
+		plt.rc('font', family='serif')
+		plt.figure(figsize=(4.,4.))
+	
+		plt.plot(t_return, r_hm, 'k')
+		plt.xlabel('Time (Myr)')
+		plt.ylabel('$R_{hm}$')
+		
+		plt.savefig(simulation.out+'_HM.pdf', bbox_inches='tight', format='pdf')
+		plt.show()	
+
+
+	return t_return, r_hm
+
+
+
+def rotate_vector(x0, y0, z0, th, ph):
+	
+	def Rx_theta(x,y,z, theta):
+		xnew = x
+		ynew = np.cos(theta)*y - np.sin(theta)*z
+		znew = np.sin(theta)*y +np.cos(theta)*z
+		return xnew, ynew, znew
+
+	
+	def Ry_phi(x,y,z, phi):
+		xnew = x*np.cos(phi)+z*np.sin(phi)
+		ynew = y 
+		znew = -x*np.sin(phi)+z*np.cos(phi)
+		return xnew, ynew, znew
+
+	
+	x1, y1, z1 = Rx_theta(x0,y0,z0, th)
+	x1, y1, z1 = Ry_phi(x1,y1,z1, ph)
+
+	return x1, y1, z1
+	
+
+
+def get_KE(x, y, vx, vy, m):
+	
+	
+	def radial_velocity(xtmp,ytmp,vxtmp,vytmp):
+		vr = (vxtmp*xtmp+ytmp*vytmp)/np.sqrt(xtmp**2.+ytmp**2.)
+		return vr
+
+	def azim_velocity(xtmp,ytmp,vxtmp,vytmp):
+		vt = (vytmp*xtmp-ytmp*vxtmp)/np.sqrt(xtmp**2.+ytmp**2.)
+		return vt
+
+	
+	rvst =  radial_velocity(x, y, vx, vy)
+	tvst =  azim_velocity(x, y, vx, vy)
+
+	tneg = np.where(tvst<0.)[0]
+	tpos = np.where(tvst>0.)[0]
+	tvn = tvst[tneg]
+	tvp = tvst[tpos]
+	tmp = m[tpos]
+	tmn = m[tneg]
+
+	rneg = np.where(rvst<0.)[0]
+	rpos = np.where(rvst>0.)[0]
+	rvn = tvst[rneg]
+	rmn = m[rneg]
+	rmp = m[rpos]
+	rvp = tvst[rpos]
+
+	KEr = np.sum(rmp*rvp**2.)/(np.sum(rmn*rvn**2.)+np.sum(rmp*rvp**2.))
+	KEt= np.sum(tmp*tvp**2.)/(np.sum(tmn*tvn**2.)+np.sum(tmp*tvp**2.))
+
+	
+	KErt = (np.sum(rmn*rvn**2.)+np.sum(rmp*rvp**2.))/(np.sum(rmn*rvn**2.)+np.sum(rmp*rvp**2.)+np.sum(tmn*tvn**2.)+np.sum(tmp*tvp**2.))
+
+	return KEr, KEt, KErt
+
+
+def get_CMASS_fromsim(simulation,  centre = (.0, .0),  autocent=False, radcentre=5.0, dims=2,time=0.0):
+	
+	t = copy.copy(simulation.t)
+	r = copy.copy(simulation.r)
+	m = copy.copy(simulation.m)
+
+	tunits, munits, runits = simulation.units
+
+	tarch = t*tunits*s2myr
+	r *= runits*m2pc
+	m *= munits*kg2sol
+
+	it = np.argmin(np.absolute(tarch-time))
+	
+
+	rswap = np.swapaxes(r, 0,2)
+	#rswap = np.swapaxes(rswap, 1,2)
+	x = rswap[0]
+	y = rswap[1]
+	z = rswap[2]
+
+	x= np.swapaxes(x,0,1)
+	y = np.swapaxes(y,0,1)
+	z = np.swapaxes(z,0,1)
+
+	if autocent:
+		ctmp = cluster_calcs.empirical_centre(r[it], radcentre, dims, 20, 3)
+	else:
+		ctmp = np.array([centre[0],centre[1]])
+
+	xt = x[it]-ctmp[0]
+	yt = y[it]-ctmp[1]
+	if dims==3:
+		zt = x[it]-ctmp[0]
+		subvals = np.where((xt**2.+yt**2.+zt**2.)<radcentre**2.)[0]
+	else:
+		subvals = np.where((xt**2.+yt**2.)<radcentre**2.)[0]
+	
+	cmass = np.sum(m[subvals])
+			
+	return cmass
+
+def get_KE_fromsim(simulation,  fsize=None, centre = (.0, .0), mfilt=1.0,  autocent=False, radcentre=5.0, time=0.0,hm=False, radlim=None, fix_n=None):
+	
+	t = copy.copy(simulation.t)
+	r = copy.copy(simulation.r)
+	v = copy.copy(simulation.v) 
+	m = copy.copy(simulation.m)
+
+	tunits, munits, runits = simulation.units
+
+	tarch = t*tunits*s2myr
+	r *= runits*m2pc
+	m *= munits*kg2sol
+	v *= 1e-3*runits/tunits
+
+	it = np.argmin(np.absolute(tarch-time))
+	vswap = np.swapaxes(v, 0,2)
+	rswap = np.swapaxes(r, 0,2)
+	vx = vswap[0]
+	vy = vswap[1]
+	vz = vswap[2]
+	x = rswap[0]
+	y = rswap[1]
+	
+	if mfilt!=None:
+		biginds = np.where(m>mfilt)[0]
+		x = x[biginds]
+		y = y[biginds]
+		vx = vx[biginds]
+		vy = vy[biginds]
+	
+	vx= np.swapaxes(vx,0,1)
+	vy = np.swapaxes(vy,0,1)
+	
+	x= np.swapaxes(x,0,1)
+	y = np.swapaxes(y,0,1)
+
+	if autocent:
+		ctmp = cluster_calcs.empirical_centre(r[it], radcentre, 2, 20, 3)
+	else:
+		ctmp = np.array([centre[0],centre[1]])
+
+	xt = x[it]-ctmp[0]
+	yt = y[it]-ctmp[1]
+	if hm:
+		rmags = np.sqrt(xt**2+yt**2)
+		irsrt = np.argsort(rmags)
+		rsort = rmags[irsrt]
+		msort = m[irsrt]
+		cumdist = np.cumsum(msort)
+		ncumdist = cumdist/cumdist[-1]
+		frac_func = interpolate.interp1d(ncumdist, rsort)
+		r_hm = frac_func(0.5)
+		subvals = np.where(rmags<r_hm)[0]
+		xt = xt[subvals]
+		yt = yt[subvals]
+		vxt = vx[it][subvals]
+		vyt = vy[it][subvals]
+	elif radlim!=None:
+		rmags = np.sqrt(xt**2+yt**2)
+		subvals = np.where(rmags<radlim)[0]
+		xt = xt[subvals]
+		yt = yt[subvals]
+		vxt = vx[it][subvals]
+		vyt = vy[it][subvals]
+	elif fsize!=None:
+		subvals = np.where(np.absolute(xt)<fsize)[0]
+		xt = xt[subvals]
+		yt = yt[subvals]
+		vxt = vx[it][subvals]
+		vyt = vy[it][subvals]
+		subvals = np.where(np.absolute(yt)<fsize)[0]
+		xt = xt[subvals]
+		yt = yt[subvals]
+		vxt = vxt[subvals]
+		vyt = vyt[subvals]
+	else:
+		vxt = vx[it]
+		vyt = vy[it]
+
+	if fix_n!=None:
+		if len(xt)>fix_n:
+			subvals = np.random.choice(np.arange(len(xt)),size=fix_n, replace=False)
+			xt = xt[subvals]
+			yt = yt[subvals]
+			vxt = vxt[subvals]
+			vyt = vyt[subvals]
+			print('Restricting consideration to {0}/{1} stars.'.format(fix_n, len(xt)))
+		else:
+			if hm:
+				print('Warning: too few stars in hm radius - {0}/{1}.'.format(len(xt), fix_n))
+			elif radlim!=None:
+				print('Warning: too few stars in radius {2} pc - {0}/{1}.'.format(len(xt), fix_n, radlim))
+			elif fsize!=None:
+				print('Warning: too few stars in field size {2}x{2} pc - {0}/{1}.'.format(len(xt), fix_n, fsize*2.))
+			else:
+				print('Warning: too few stars in simulation.')
+	
+	KEr, KEt, KErt = get_KE(xt, yt, vxt, vyt)
+
+	return KEr, KEt, KErt
+
+def plot_vdisp(simulation,  sp_time=None):
+	
+	t = copy.copy(simulation.t)
+	r = copy.copy(simulation.r)
+	v = copy.copy(simulation.v) 
+	m = copy.copy(simulation.m)
+
+	tunits, munits, runits = simulation.units
+
+	tarch = t*tunits*s2myr
+	r *= runits*m2pc
+	m *= munits*kg2sol
+	v *= 1e-3*runits/tunits
+
+	if type(sp_time)!=type(None):
+		list_indices = time_inds(tarch, dt=sp_time)
+		nsnaps = len(list_indices)
+	else:
+		nsnaps = len(tarch)
+		list_indices = np.arange(nsnaps)
+
+	times = tarch[list_indices]
+	vels = v[list_indices]
+	
+	vdisp = np.std(vels, axis=1)
+
+	print(vdisp.shape)
+	print(vdisp)
+	
+	exit()
+
+def get_tfirst(tarray, popinds, nstars):
+	tfirst_arr = np.zeros(nstars)
+	for istar in range(nstars):
+		tcheck = True
+		ipop=0
+		while tcheck and ipop<len(popinds):
+			if np.in1d(istar, popinds[ipop])[0]:
+				tfirst_arr[istar] = tarray[ipop]
+				tcheck=False
+			ipop+=1
+		if tcheck:
+			print('Star not found:', istar)
+			exit()
+
+	return tfirst_arr
+			
+
+def plot_stages(simulation,  time=0.0):
+	
+	t = copy.copy(simulation.t)
+	r = copy.copy(simulation.r)
+	v = copy.copy(simulation.v) 
+	m = copy.copy(simulation.m)
+	ipops = copy.copy(simulation.starinds)
+	tends = np.cumsum(np.array(copy.copy(simulation.tends)))
+	tends -= tends[1]
+	
+	tunits, munits, runits = simulation.units
+
+	tends *= tunits*s2myr
+	tarch = t*tunits*s2myr
+	r *= runits*m2pc
+	m *= munits*kg2sol
+	v *= 1e-3*runits/tunits
+
+	itime = np.argmin(np.absolute(tarch-time))
+	
+	rvals = r[itime]
+	
+	print(tends)
+	tfirst = get_tfirst(tends, ipops, len(m))
+	print(tfirst)
+
+	tages = time-tfirst
+
+	rad = np.linalg.norm(rvals, axis=1)
+	
+	print(np.mean(rad[np.where(tages>2.1)]))
+	print(np.mean(rad[np.where(tages<1.0)]))
+
+	plt.scatter(rad, tages)
+	plt.show()
+	
+
+
+def get_KEMI_distr(simulation,  fsize=10.0, centre = (.0, .0), mfilt=None,  autocent=False, radcentre=10.0, time=0.0,hm=False, radlim=None, fix_n=100, nhist=100, theta=0.0, phi=0.0, minKE=False, minVZ=False, verror=0.):
+	
+	t = copy.copy(simulation.t)
+	r = copy.copy(simulation.r)
+	v = copy.copy(simulation.v) 
+	m = copy.copy(simulation.m)
+
+	tunits, munits, runits = simulation.units
+
+	tarch = t*tunits*s2myr
+	r *= runits*m2pc
+	m *= munits*kg2sol
+	v *= 1e-3*runits/tunits
+
+	
+	if type(time)==list:
+		KE_MI_all = []
+		vdisp_all = []
+		times_all = []
+
+		plt.rc('text', usetex=True)
+		plt.rc('font', family='serif')
+		plt.figure(figsize=(4.,4.))
+		itime=0
+		lines = ['dashed', 'solid', 'dashdot', 'dotted']
+		
+		for t in time:
+			it = np.argmin(np.absolute(tarch-t))
+			times_all.append(tarch[it])
+
+			vswap = np.swapaxes(v, 0,2)
+			rswap = np.swapaxes(r, 0,2)
+			vx = vswap[0]
+			vy = vswap[1]
+			vz = vswap[2]
+			x = rswap[0]
+			y = rswap[1]
+			z = rswap[2]
+			if mfilt!=None:
+				biginds = np.where(m>mfilt)[0]
+				x = x[biginds]
+				y = y[biginds]
+				z = z[biginds]
+				vx = vx[biginds]
+				vy = vy[biginds]
+				vz = vz[biginds]
+				m = m[biginds]
+	
+			vx= np.swapaxes(vx,0,1)
+			vy = np.swapaxes(vy,0,1)
+			vz = np.swapaxes(vz,0,1)
+	
+			x= np.swapaxes(x,0,1)
+			y = np.swapaxes(y,0,1)
+			z = np.swapaxes(z,0,1)
+
+			print(x.shape)
+
+			if minKE:
+				if not os.path.isfile(simulation.out+'_KEmin.npy'):
+					print('Minimising KE. This may take several minutes...')
+					ke_min, theta, phi = minimise_KE(x[it], y[it], z[it], vx[it], vy[it], vz[it], m, KEtype=0, res=10, autocent=autocent, fsize=fsize, radlim=radlim, radcentre=radcentre, hm=hm, centre=centre)
+					print('Minimised KE bias for theta = {0}, phi = {1}: {2}'.format(theta, phi, ke_min))
+					np.save(simulation.out+'_KEmin', np.array([theta, phi, ke_min]))
+				else:
+					theta, phi, ke_min = np.load(simulation.out+'_KEmin.npy')
+					print('Minimised KE bias for theta = {0}, phi = {1}: {2}'.format(theta, phi, ke_min))
+			elif minVZ:
+				if not os.path.isfile(simulation.out+'_minVZ.npy'):
+					print('Minimising v_z. This may take several minutes...')
+					vz_min, theta, phi = minimise_VZ(x[it], y[it], z[it], vx[it], vy[it], vz[it], m, res=10, autocent=False, fsize=None, radlim=radlim, radcentre=radcentre, hm=hm, centre=centre)
+					print('Minimised v_z for theta = {0}, phi = {1}: {2}'.format(theta, phi, vz_min))
+					np.save(simulation.out+'_minVZ', np.array([theta, phi, vz_min]))
+				else:
+					theta, phi, vz_min = np.load(simulation.out+'_minVZ.npy')
+					print('Minimised v_z bias for theta = {0}, phi = {1}: {2}'.format(theta, phi, vz_min))
+
+			print('Vdisp before:', np.std(vx[it]), np.std(vy[it]), np.std(vz[it]))
+
+			xt,  yt, zt, vxt, vyt, vzt = rotate_rx(x[it], y[it], z[it], vx[it],vy[it],vz[it],theta, phi)
+	
+			print('Vdisp after:', np.std(vxt), np.std(vyt), np.std(vzt))
+
+			print(xt.shape)
+	
+
+			if autocent:
+				rt = np.swapaxes(np.array([xt,yt,zt]),0,1)
+				ctmp = cluster_calcs.empirical_centre(rt, radcentre, 2, 50, 3)
+			else:
+				ctmp = np.array([centre[0],centre[1]])
+
+			xt = xt-ctmp[0]
+			yt = yt-ctmp[1]
+			if hm:
+				rmags = np.sqrt(xt**2+yt**2)
+				irsrt = np.argsort(rmags)
+				rsort = rmags[irsrt]
+				msort = m[irsrt]
+				cumdist = np.cumsum(msort)
+				ncumdist = cumdist/cumdist[-1]
+				frac_func = interpolate.interp1d(ncumdist, rsort)
+				r_hm = frac_func(0.5)
+				subvals = np.where(rmags<r_hm)[0]
+				xt = xt[subvals]
+				yt = yt[subvals]
+				zt = zt[subvals]
+				vxt = vxt[subvals]
+				vyt = vyt[subvals]
+				vzt = vzt[subvals]
+				mt = m[subvals]
+			elif radlim!=None:
+				rmags = np.sqrt(xt**2+yt**2)
+				subvals = np.where(rmags<radlim)[0]
+				xt = xt[subvals]
+				yt = yt[subvals]
+				zt = zt[subvals]
+				vxt = vxt[subvals]
+				vyt = vyt[subvals]
+				vzt = vzt[subvals]
+				mt = m[subvals]
+			elif fsize!=None:
+				print('Field size: {0}'.format(fsize))
+				subvals = np.where((np.absolute(xt)<fsize)&(np.absolute(yt)<fsize))[0]
+				xt = xt[subvals]
+				yt = yt[subvals]
+				zt = zt[subvals]
+				vxt = vxt[subvals]
+				vyt = vyt[subvals]
+				vzt = vzt[subvals]
+				mt = m[subvals]
+	
+			if len(xt)>fix_n:
+				print('Restricting consideration to {0}/{1} stars.'.format(fix_n, len(xt)))
+			else:
+				print('Error: too few stars in field ({0}/{1}).'.format(len(xt), fix_n))
+				exit()
+
+			KE_MI = np.zeros((nhist,3))
+			vdisp = np.zeros((nhist,3))
+			for ihist in range(nhist):
+				subvals = np.random.choice(np.arange(len(xt)),size=fix_n, replace=False)
+				xtmp = xt[subvals]
+				ytmp = yt[subvals]
+				vxtmp = vxt[subvals]
+				vytmp = vyt[subvals]
+				vztmp = vzt[subvals]
+				mtmp = mt[subvals]
+
+				KEr, KEt, KErt = get_KE(xtmp, ytmp, vxtmp, vytmp, mtmp)
+				MIx, MIy=  cluster_calcs.Morans_I_vcorr(r[it][subvals], v[it][subvals], 0.*au2pc, verror)
+				vdispx = np.sqrt(np.mean(vxtmp*vxtmp))
+				vdispy = np.sqrt(np.mean(vytmp*vytmp))
+				vdispz = np.sqrt(np.mean(vztmp*vztmp))
+				KE_MI[ihist] = np.array([KEr,MIx,MIy])
+				vdisp[ihist] = np.array([vdispx,vdispy,vdispz])
+				if (ihist+1)%100==0:
+					KEMI_tmp = np.swapaxes(KE_MI[:ihist+1],0,1)
+					KEmean = np.mean(KEMI_tmp[0])
+					MIxmean = np.mean(KEMI_tmp[1])
+					MIymean = np.mean(KEMI_tmp[2])
+					KErsigma = 0.5*(np.percentile(KEMI_tmp[0], 84.2)-np.percentile(KEMI_tmp[0], 15.8))
+					MIxsigma = 0.5*(np.percentile(KEMI_tmp[1], 84.2)-np.percentile(KEMI_tmp[1], 15.8))
+					MIysigma = 0.5*(np.percentile(KEMI_tmp[2], 84.2)-np.percentile(KEMI_tmp[2], 15.8))
+					print('At iteration {3}: <E>={0}, <Ix>={1}, <Iy>={2}'.format(KEmean, MIxmean, MIymean, ihist+1))
+					print('sigma_E={0}, sigma_Ix={1}, sigma_Iy={2}'.format(KErsigma, MIxsigma, MIysigma))
+
+				
+					vdisp_tmp = np.swapaxes(vdisp[:ihist+1],0,1)
+					vxmean = np.mean(vdisp_tmp[0])
+					vymean = np.mean(vdisp_tmp[1])
+					vzmean = np.mean(vdisp_tmp[2])
+					vxsigma = 0.5*(np.percentile(vdisp_tmp[0], 84.2)-np.percentile(vdisp_tmp[0], 15.8))
+					vysigma = 0.5*(np.percentile(vdisp_tmp[1], 84.2)-np.percentile(vdisp_tmp[1], 15.8))
+					vzsigma = 0.5*(np.percentile(vdisp_tmp[2], 84.2)-np.percentile(vdisp_tmp[2], 15.8))
+					print('(sqrt) <<vx^2>>={0}, <<vy^2>>={1}, <<vz^2>>={2}'.format(vxmean, vymean, vzmean))
+					print('(sqrt) sigma_<vx^2>={0}, sigma_<vy^2>={1}, sigma_<vz^2>={2}\n_________\n'.format(vxsigma, vysigma, vzsigma))
+
+			KE_MI_all.append(KE_MI)
+			vdisp_all.append(vdisp)
+
+			X =  np.swapaxes(KE_MI, 0,1)[0]
+			bins = np.append(np.sort(X),1e1)
+			bins = np.unique(bins)
+			n, bins, patches = plt.hist(X, normed=True, histtype='step', cumulative=True, bins=bins, edgecolor='k', linestyle=lines[itime])
+			plt.plot([],[], linestyle=lines[itime], color='k', label='$t = %.1lf$ Myr'%(times_all[-1]))
+			itime+=1
+
+		plt.xlim([0.3,0.7])
+		plt.ylim([0.,1.])
+		
+		plt.ylabel('Cum. Frac. Ensembles')
+		plt.xlabel('$\\mathcal{E}$')
+		plt.axvline(0.5, color='r')
+		plt.legend(loc=2)
+		plt.savefig(simulation.out+'_KEt_cumfrac.pdf', bbox_inches='tight', format='pdf')
+		plt.show()
+
+	else:
+		if not os.path.isfile(simulation.out+'_KEMIdist.npy') or not os.path.isfile(simulation.out+'_vdisp.npy'):
+			it = np.argmin(np.absolute(tarch-time))
+			vswap = np.swapaxes(v, 0,2)
+			rswap = np.swapaxes(r, 0,2)
+			vx = vswap[0]
+			vy = vswap[1]
+			vz = vswap[2]
+			x = rswap[0]
+			y = rswap[1]
+			z = rswap[2]
+			if mfilt!=None:
+				biginds = np.where(m>mfilt)[0]
+				x = x[biginds]
+				y = y[biginds]
+				z = z[biginds]
+				vx = vx[biginds]
+				vy = vy[biginds]
+				vz = vz[biginds]
+				m = m[biginds]
+	
+			vx= np.swapaxes(vx,0,1)
+			vy = np.swapaxes(vy,0,1)
+			vz = np.swapaxes(vz,0,1)
+	
+			x= np.swapaxes(x,0,1)
+			y = np.swapaxes(y,0,1)
+			z = np.swapaxes(z,0,1)
+
+			print(x.shape)
+
+			if minKE:
+				if not os.path.isfile(simulation.out+'_KEmin.npy'):
+					print('Minimising KE. This may take several minutes...')
+					ke_min, theta, phi = minimise_KE(x[it], y[it], z[it], vx[it], vy[it], vz[it], m, KEtype=0, res=10, autocent=autocent, fsize=fsize, radlim=radlim, radcentre=radcentre, hm=hm, centre=centre)
+					print('Minimised KE bias for theta = {0}, phi = {1}: {2}'.format(theta, phi, ke_min))
+					np.save(simulation.out+'_KEmin', np.array([theta, phi, ke_min]))
+				else:
+					theta, phi, ke_min = np.load(simulation.out+'_KEmin.npy')
+					print('Minimised KE bias for theta = {0}, phi = {1}: {2}'.format(theta, phi, ke_min))
+			elif minVZ:
+				if not os.path.isfile(simulation.out+'_minVZ.npy'):
+					print('Minimising v_z. This may take several minutes...')
+					vz_min, theta, phi = minimise_VZ(x[it], y[it], z[it], vx[it], vy[it], vz[it], m, res=10, autocent=False, fsize=None, radlim=radlim, radcentre=radcentre, hm=hm, centre=centre)
+					print('Minimised v_z for theta = {0}, phi = {1}: {2}'.format(theta, phi, vz_min))
+					np.save(simulation.out+'_minVZ', np.array([theta, phi, vz_min]))
+				else:
+					theta, phi, vz_min = np.load(simulation.out+'_minVZ.npy')
+					print('Minimised v_z bias for theta = {0}, phi = {1}: {2}'.format(theta, phi, vz_min))
+
+			print('Vdisp before:', np.std(vx[it]), np.std(vy[it]), np.std(vz[it]))
+
+			xt,  yt, zt, vxt, vyt, vzt = rotate_rx(x[it], y[it], z[it], vx[it],vy[it],vz[it],theta, phi)
+	
+			print('Vdisp after:', np.std(vxt), np.std(vyt), np.std(vzt))
+
+			print(xt.shape)
+	
+
+			if autocent:
+				rt = np.swapaxes(np.array([xt,yt,zt]),0,1)
+				ctmp = cluster_calcs.empirical_centre(rt, radcentre, 2, 50, 3)
+			else:
+				ctmp = np.array([centre[0],centre[1]])
+
+			xt = xt-ctmp[0]
+			yt = yt-ctmp[1]
+			if hm:
+				rmags = np.sqrt(xt**2+yt**2)
+				irsrt = np.argsort(rmags)
+				rsort = rmags[irsrt]
+				msort = m[irsrt]
+				cumdist = np.cumsum(msort)
+				ncumdist = cumdist/cumdist[-1]
+				frac_func = interpolate.interp1d(ncumdist, rsort)
+				r_hm = frac_func(0.5)
+				subvals = np.where(rmags<r_hm)[0]
+				xt = xt[subvals]
+				yt = yt[subvals]
+				zt = zt[subvals]
+				vxt = vxt[subvals]
+				vyt = vyt[subvals]
+				vzt = vzt[subvals]
+				mt = m[subvals]
+			elif radlim!=None:
+				rmags = np.sqrt(xt**2+yt**2)
+				subvals = np.where(rmags<radlim)[0]
+				xt = xt[subvals]
+				yt = yt[subvals]
+				zt = zt[subvals]
+				vxt = vxt[subvals]
+				vyt = vyt[subvals]
+				vzt = vzt[subvals]
+				mt = m[subvals]
+			elif fsize!=None:
+				print('Field size: {0}'.format(fsize))
+				subvals = np.where((np.absolute(xt)<fsize)&(np.absolute(yt)<fsize))[0]
+				xt = xt[subvals]
+				yt = yt[subvals]
+				zt = zt[subvals]
+				vxt = vxt[subvals]
+				vyt = vyt[subvals]
+				vzt = vzt[subvals]
+				mt = m[subvals]
+	
+			if len(xt)>fix_n:
+				print('Restricting consideration to {0}/{1} stars.'.format(fix_n, len(xt)))
+			else:
+				print('Error: too few stars in field ({0}/{1}).'.format(len(xt), fix_n))
+				exit()
+
+			KE_MI = np.zeros((nhist,3))
+			vdisp = np.zeros((nhist,3))
+			for ihist in range(nhist):
+				subvals = np.random.choice(np.arange(len(xt)),size=fix_n, replace=False)
+				xtmp = xt[subvals]
+				ytmp = yt[subvals]
+				vxtmp = vxt[subvals]
+				vytmp = vyt[subvals]
+				vztmp = vzt[subvals]
+				mtmp = mt[subvals]
+
+				KEr, KEt, KErt = get_KE(xtmp, ytmp, vxtmp, vytmp, mtmp)
+				MIx, MIy=  cluster_calcs.Morans_I_vcorr(r[it][subvals], v[it][subvals], 0.*au2pc, verror)
+				vdispx = np.sqrt(np.mean(vxtmp*vxtmp))
+				vdispy = np.sqrt(np.mean(vytmp*vytmp))
+				vdispz = np.sqrt(np.mean(vztmp*vztmp))
+				KE_MI[ihist] = np.array([KEr,MIx,MIy])
+				vdisp[ihist] = np.array([vdispx,vdispy,vdispz])
+				if (ihist+1)%100==0:
+					KEMI_tmp = np.swapaxes(KE_MI[:ihist+1],0,1)
+					KEmean = np.mean(KEMI_tmp[0])
+					MIxmean = np.mean(KEMI_tmp[1])
+					MIymean = np.mean(KEMI_tmp[2])
+					KErsigma = 0.5*(np.percentile(KEMI_tmp[0], 84.2)-np.percentile(KEMI_tmp[0], 15.8))
+					MIxsigma = 0.5*(np.percentile(KEMI_tmp[1], 84.2)-np.percentile(KEMI_tmp[1], 15.8))
+					MIysigma = 0.5*(np.percentile(KEMI_tmp[2], 84.2)-np.percentile(KEMI_tmp[2], 15.8))
+					print('At iteration {3}: <E>={0}, <Ix>={1}, <Iy>={2}'.format(KEmean, MIxmean, MIymean, ihist+1))
+					print('sigma_E={0}, sigma_Ix={1}, sigma_Iy={2}'.format(KErsigma, MIxsigma, MIysigma))
+
+				
+					vdisp_tmp = np.swapaxes(vdisp[:ihist+1],0,1)
+					vxmean = np.mean(vdisp_tmp[0])
+					vymean = np.mean(vdisp_tmp[1])
+					vzmean = np.mean(vdisp_tmp[2])
+					vxsigma = 0.5*(np.percentile(vdisp_tmp[0], 84.2)-np.percentile(vdisp_tmp[0], 15.8))
+					vysigma = 0.5*(np.percentile(vdisp_tmp[1], 84.2)-np.percentile(vdisp_tmp[1], 15.8))
+					vzsigma = 0.5*(np.percentile(vdisp_tmp[2], 84.2)-np.percentile(vdisp_tmp[2], 15.8))
+					print('(sqrt) <<vx^2>>={0}, <<vy^2>>={1}, <<vz^2>>={2}'.format(vxmean, vymean, vzmean))
+					print('(sqrt) sigma_<vx^2>={0}, sigma_<vy^2>={1}, sigma_<vz^2>={2}\n_________\n'.format(vxsigma, vysigma, vzsigma))
+		
+			np.save(simulation.out+'_KEMIdist', KE_MI)
+			np.save(simulation.out+'_vdisp', vdisp)
+		
+		else:
+			KE_MI = np.load(simulation.out+'_KEMIdist.npy')
+			vdisp = np.load(simulation.out+'_vdisp.npy')
+	
+
+
+	
+	
+		KEr, MIx,MIy = np.swapaxes(KE_MI, 0,1)
+
+		MIxbar = np.mean(MIx)
+		MIxsigma = 0.5*(np.percentile(MIx, 84.2)-np.percentile(MIx, 15.8))
+	
+		MIybar = np.mean(MIy)
+		MIysigma = 0.5*(np.percentile(MIy, 84.2)-np.percentile(MIy, 15.8))
+
+		KErbar = np.mean(KEr)
+		KErsigma = 0.5*(np.percentile(KEr, 84.2)-np.percentile(KEr, 15.8))
+
+
+		vdisp_tmp = np.swapaxes(vdisp,0,1)
+		vxmean = np.mean(vdisp_tmp[0])
+		vymean = np.mean(vdisp_tmp[1])
+		vzmean = np.mean(vdisp_tmp[2])
+		vxsigma = 0.5*(np.percentile(vdisp_tmp[0], 84.2)-np.percentile(vdisp_tmp[0], 15.8))
+		vysigma = 0.5*(np.percentile(vdisp_tmp[1], 84.2)-np.percentile(vdisp_tmp[1], 15.8))
+		vzsigma = 0.5*(np.percentile(vdisp_tmp[2], 84.2)-np.percentile(vdisp_tmp[2], 15.8))
+
+		print('Final values:  <E>={0}, <Ix>={1}, <Iy>={2}'.format(KErbar, MIxbar, MIybar))
+		print('Final values:  sigma_E={0}, sigma_Ix={1}, sigma_Iy={2}'.format(KErsigma, MIxsigma, MIysigma))
+		print('(sqrt) <<vx^2>>={0}, <<vy^2>>={1}, <<vz^2>>={2}'.format(vxmean, vymean, vzmean))
+		print('(sqrt) sigma_<vx^2>={0}, sigma_<vy^2>={1}, sigma_<vz^2>={2}'.format(vxsigma, vysigma, vzsigma))
+
+
+		plt.rc('text', usetex=True)
+		plt.rc('font', family='serif')
+		plt.figure(figsize=(4.,4.))
+	
+		plt.hist(KEr, bins=10, normed=True, cumulative=True)
+		plt.axvline(0.5, color='r')
+		plt.axvline(0.43, color='r', linestyle='--')
+		plt.axvline(0.59, color='r', linestyle='--')
+		plt.xlabel("$\\mathcal{E}$")
+		plt.ylabel('Probability')
+		plt.savefig(simulation.out+'_MIhist.pdf', bbox_inches='tight', format='pdf')
+		plt.show()
+
+
+		plt.rc('text', usetex=True)
+		plt.rc('font', family='serif')
+		plt.figure(figsize=(4.,4.))
+		plt.hist2d(MIx, MIy, bins=10, norm=LogNorm(), normed=True, cmap='Greys')
+
+		plt.axvline(0.034, c='r', linestyle='--')
+		plt.axvline(0.021, c='r', linestyle='--')
+		plt.axhline(0.034, c='r', linestyle='--')
+		plt.axhline(0.021, c='r', linestyle='--')
+
+		plt.xlabel("$I_x$")
+		plt.ylabel("$I_y$")
+		cb = plt.colorbar()
+		cb.set_label('PDF Value')
+		plt.savefig(simulation.out+'_KEhist.pdf', bbox_inches='tight', format='pdf')
+		plt.show()
+
+	return KE_MI
+
+def rotate_rx(x, y,z, vx, vy, vz, theta, phi):
+	xtmp, ytmp, ztmp = rotate_vector(x, y, z, theta, phi)
+	sumxv, sumyv, sumzv = rotate_vector(x+vx, y+vy, z+vz, theta, phi)
+	vxtmp = sumxv - xtmp
+	vytmp = sumyv - ytmp
+	vztmp = sumzv - ztmp
+	return xtmp, ytmp, ztmp, vxtmp, vytmp, vztmp
+	
+def minimise_VZ(x, y, z, vx, vy, vz, m, res=10, fsize=None, autocent=False, radcentre=10.0,hm=False, radlim=None, centre=(0.,0.)):
+	
+	theta_vals = np.linspace(0., 2.*np.pi, res)
+	phi_vals = np.linspace(0., np.pi, int(res/2.))
+
+	vz_arr = np.zeros((len(theta_vals), len(phi_vals)))
+
+	for itheta in range(len(theta_vals)):
+		for iphi in range(len(phi_vals)):
+			xtmp, ytmp, ztmp, vxtmp, vytmp, vztmp=rotate_rx(x,y,z,vx,vy,vz,theta_vals[itheta], phi_vals[iphi])
+
+			if autocent:
+				rt = np.swapaxes(np.array([xtmp,ytmp,ztmp]),0,1)
+				ctmp = cluster_calcs.empirical_centre(rt, radcentre, 2, 50, 3)
+			else:
+				ctmp = np.array([centre[0],centre[1]])
+
+			xtmp = xtmp-ctmp[0]
+			ytmp = ytmp-ctmp[1]
+			
+			if hm:
+				rmags = np.sqrt(xtmp**2+ytmp**2)
+				irsrt = np.argsort(rmags)
+				rsort = rmags[irsrt]
+				msort = m[irsrt]
+				cumdist = np.cumsum(msort)
+				ncumdist = cumdist/cumdist[-1]
+				frac_func = interpolate.interp1d(ncumdist, rsort)
+				r_hm = frac_func(0.5)
+				subvals = np.where(rmags<r_hm)[0]
+				vzt = vztmp[subvals]
+			elif radlim!=None:
+				rmags = np.sqrt(xtmp**2+ytmp**2)
+				subvals = np.where(rmags<radlim)[0]
+				vzt = vztmp[subvals]
+			elif fsize!=None:
+				subvals = np.where((np.absolute(xtmp)<fsize)&(np.absolute(ytmp)<fsize))[0]
+				vzt = vztmp[subvals]
+			else:
+				vzt = vztmp
+				
+
+			vz_arr[itheta][iphi] =  np.std(vzt)
+		print('Angle exploration complete for {0}/{1} theta values'.format(itheta+1,len(theta_vals)))
+
+
+	min_ind = np.unravel_index(np.argmin(np.absolute(vz_arr), axis=None), vz_arr.shape)
+
+	vz_min = vz_arr[min_ind]
+	
+	theta_min = theta_vals[min_ind[0]]
+	phi_min = phi_vals[min_ind[1]]
+
+	return vz_min, theta_min, phi_min
+
+	
+def minimise_KE(x, y, z, vx, vy, vz, m, KEtype=0, res=50, fsize=None, autocent=False, radcentre=10.0,hm=False, radlim=None, centre=(0.,0.), KEval=0.5):
+	
+	theta_vals = np.linspace(0., 2.*np.pi, res)
+	phi_vals = np.linspace(0., np.pi, int(res/2.))
+
+	ke_arr = np.zeros((len(theta_vals), len(phi_vals)))
+
+	for itheta in range(len(theta_vals)):
+		for iphi in range(len(phi_vals)):
+			xtmp, ytmp, ztmp, vxtmp, vytmp, vztmp=rotate_rx(x,y,z,vx,vy,vz,theta_vals[itheta], phi_vals[iphi])
+
+			if autocent:
+				rt = np.swapaxes(np.array([xtmp,ytmp,ztmp]),0,1)
+				ctmp = cluster_calcs.empirical_centre(rt, radcentre, 2, 50, 3)
+			else:
+				ctmp = np.array([centre[0],centre[1]])
+
+			xtmp = xtmp-ctmp[0]
+			ytmp = ytmp-ctmp[1]
+			
+			if hm:
+				rmags = np.sqrt(xtmp**2+ytmp**2)
+				irsrt = np.argsort(rmags)
+				rsort = rmags[irsrt]
+				msort = m[irsrt]
+				cumdist = np.cumsum(msort)
+				ncumdist = cumdist/cumdist[-1]
+				frac_func = interpolate.interp1d(ncumdist, rsort)
+				r_hm = frac_func(0.5)
+				subvals = np.where(rmags<r_hm)[0]
+				xtmp = xtmp[subvals]
+				ytmp = ytmp[subvals]
+				vxtmp = vxtmp[subvals]
+				vytmp = vytmp[subvals]
+				mtmp = m[subvals]
+			elif radlim!=None:
+				rmags = np.sqrt(xtmp**2+ytmp**2)
+				subvals = np.where(rmags<radlim)[0]
+				xtmp = xtmp[subvals]
+				ytmp = ytmp[subvals]
+				vxtmp = vxtmp[subvals]
+				vytmp = vytmp[subvals]
+				mtmp = m[subvals]
+			elif fsize!=None:
+				subvals = np.where((np.absolute(xtmp)<fsize)&(np.absolute(ytmp)<fsize))[0]
+				xtmp = xtmp[subvals]
+				ytmp = ytmp[subvals]
+				vxtmp = vxtmp[subvals]
+				vytmp = vytmp[subvals]
+				mtmp = m[subvals]
+
+			ke_arr[itheta][iphi] =  get_KE(xtmp, ytmp, vxtmp, vytmp, mtmp)[KEtype]
+		print('Angle exploration complete for {0}/{1} theta values'.format(itheta+1,len(theta_vals)))
+
+
+	min_ind = np.unravel_index(np.argmin(np.absolute(ke_arr-KEval), axis=None), ke_arr.shape)
+
+	ke_min = ke_arr[min_ind]
+	
+	theta_min = theta_vals[min_ind[0]]
+	phi_min = phi_vals[min_ind[1]]
+
+	return ke_min, theta_min, phi_min
+
+def convfield_KE(simulation, time=0.0, rrange = [1.0, 100.0], fix_n=700,  autocent=True, radcentre=5.0, plot=True):
+	
+	#rspace = np.logspace(np.log10(rrange[0]), np.log10(rrange[1]), 10)
+	rspace = np.linspace(rrange[0], rrange[1], 20)
+	KE_r = np.zeros(len(rspace))
+
+	if not os.path.isfile(simulation.out+'_KE_convergence.npy'):
+		for ir in range(len(rspace)):
+	
+			ker, ket, kert = get_KE_fromsim(simulation, mfilt=None,  autocent=True,hm=False, radcentre=radcentre, time=time, radlim=rspace[ir], fix_n=fix_n)
+			KE_r[ir] = ker
+			print('KE for r={0}: {1}'.format(rspace[ir], ker))
+		np.save(simulation.out+'_KE_convergence', np.array([rspace, KE_r]))
+	else:
+		rspace, KE_r = np.load(simulation.out+'_KE_convergence.npy')
+
+
+	if plot:
+		plt.rc('text', usetex=True)
+		plt.rc('font', family='serif')
+		plt.figure(figsize=(4.,4.))
+	
+		plt.plot(rspace, KE_r, 'k')
+
+		plt.xlabel('Projected Field Radius (pc)')
+		plt.ylabel('$\mathcal{E}$')
+		plt.ylim([0.4,0.75])
+
+		plt.legend(loc='best')
+	
+		plt.savefig(simulation.out+'_KE_conv.pdf', bbox_inches='tight', format='pdf')
+		plt.show()
+
+	return rspace, KE_r
+
+
+
+def get_FUVluminosities(mstars):
+	fuvdat = np.load(photoevapdir+'/FUV_lum.npy')
+			
+	mspacefuv = fuvdat[0]
+	fuv = fuvdat[1]
+
+	thresh = np.amin(mspacefuv)
+	fuvfunc = interpolate.interp1d(mspacefuv, fuv) 
+
+	msttmp = copy.copy(mstars)
+	msttmp[np.where(msttmp>99.99)[0]]=99.99
+	indices = np.where(msttmp>thresh)[0]
+
+	fuvlum = np.zeros(len(mstars))
+	fuvlum[indices] = fuvfunc(msttmp[indices])
+
+	return fuvlum
+
+def plot_g0proj(simulation, fsize=None, centre = (.0, .0), massrange=[0.5,2.0], plot=True,autocent=False, radcentre=10.0, time=0., fix_n=None, force=False, theta=0., phi=0., wext=False):
+	
+	print('Projected G0/disc calculations...')
+	MLLIM= 1.0
+
+	t = copy.copy(simulation.t)
+	r = copy.copy(simulation.r)
+	v = copy.copy(simulation.v) 
+	m = copy.copy(simulation.m)
+
+	tunits, munits, runits = simulation.units
+
+	subset_inds = simulation.photoevap_inds
+
+
+	tarch = t*tunits*s2myr
+	r *= runits*m2pc
+	m *= munits*kg2sol
+
+
+
+
+	if wext:
+		pinds = copy.copy(simulation.photoevap_inds)
+		disc_ms = np.swapaxes(copy.copy(simulation.phot_wext_m[pinds]),0,1)
+		disc_rs = np.swapaxes(copy.copy(simulation.phot_wext_r[pinds]),0,1)
+		
+		g0vals = np.swapaxes(copy.copy(simulation.FUVwext[pinds]),0,1)
+	else:
+		pinds = copy.copy(simulation.photoevap_inds)
+		disc_ms = np.swapaxes(copy.copy(simulation.phot_m[pinds]),0,1)
+		disc_rs = np.swapaxes(copy.copy(simulation.phot_r[pinds]),0,1)
+		g0vals = np.swapaxes(copy.copy(simulation.FUV[pinds]),0,1)
+
+	it = np.argmin(np.absolute(tarch-time))
+
+	print('Snap time (Myr):', tarch[it])
+	
+	dmass = disc_ms[it]
+	
+	drad = disc_rs[it]
+	
+
+
+
+	if not os.path.isfile(simulation.out+'_projg0.npy') or force:
+		
+		if theta!=0. or phi!=0.:
+			rt = np.swapaxes(r[it],0,1)
+			xt, yt, zt, vxt, vyt, vzt =rotate_rx(rt[0], rt[1], rt[2], 0.,0.,0.,theta, phi)
+			rt = np.swapaxes(np.array([xt,yt,zt]),0,1)
+		else:
+			rt= r[it]
+			vt = v[it]
+			
+
+		if autocent:
+			ctmp = cluster_calcs.empirical_centre(rt, radcentre, 2, 50, 3)
+		else:
+			ctmp = np.array([centre[0],centre[1]])
+
+	
+		im_b = np.where(m>MLLIM)[0]
+		m_d = m[pinds]
+		m_b = m[im_b]
+		rt_d = rt[pinds]
+		rt_b = rt[im_b]
+	
+		xt_d, yt_d, zt_d = np.swapaxes(rt_d, 0,1)
+		xt_b, yt_b, zt_b = np.swapaxes(rt_b, 0,1)
+		
+		xt_d = xt_d-ctmp[0]
+		yt_d = yt_d-ctmp[1]
+
+		xt_b = xt_b-ctmp[0]
+		yt_b = yt_b-ctmp[1]
+
+		
+
+		Lums = get_FUVluminosities(m_b)
+
+		fluxes  = cluster_calcs.flux(rt_d*1e2/m2pc, Lums,rt_b*1e2/m2pc,3)
+		fluxes /= g0
+
+		g0proj = fluxes
+		
+		
+		np.save(simulation.out+'_projg0', np.array([g0proj, dmass, drad, xt_d, yt_d, zt_d , m_d, xt_b, yt_b, zt_b, m_b]))
+	else:
+		g0proj, dmass, drad, xt_d, yt_d, zt_d , m_d, xt_b, yt_b, zt_b, m_b = np.load(simulation.out+'_projg0.npy')
+
+	
+	if plot:
+		
+		if fsize==None:
+			subvals = np.arange(len(xt_d))
+			subLvals = np.arange(len(xt_b))
+		else:
+			subvals = np.where((np.absolute(xt_d)<fsize)&(np.absolute(yt_d)<fsize))[0]
+			subLvals = np.where((np.absolute(xt_b)<fsize)&(np.absolute(yt_b)<fsize))[0]
+
+			
+		
+		xtsub = xt_d[subvals]
+		ytsub = yt_d[subvals]
+		ztsub = zt_d[subvals]
+		mtsub = m_d[subvals]
+		disc_mst = dmass[subvals]
+		disc_rst = drad[subvals]
+		g0proj = g0proj[subvals]
+		
+		xlargesub = xt_b[subLvals]
+		ylargesub = yt_b[subLvals]
+		mlarge = m_b[subLvals]
+
+		DMLIM=1e-5
+
+		mpl_cols = ['k', 'r', 'orange', 'lawngreen', 'brown', 'b']
+		plt.rc('text', usetex=True)
+		plt.rc('font', family='serif')
+		plt.figure(figsize=(4.,4.))
+
+		bin_divs = [3.0, 3.35, 3.5, 3.75, 4.0, 4.35,4.7]
+		
+		surv_frac = np.zeros(len(bin_divs)-1)
+
+		for idiv in range(len(bin_divs)-1):
+			in_div =  np.where((np.log10(g0proj)>bin_divs[idiv])&(np.log10(g0proj)<bin_divs[idiv+1]))[0]
+			dm_div = dmass[in_div]
+			print(len(in_div))
+			nsurv = len(np.where(dm_div>DMLIM)[0])
+			print('Nsurv:', nsurv)
+			if len(in_div)>0.:
+				surv_frac[idiv] = float(nsurv)/float(len(in_div))
+			w = bin_divs[idiv+1]-bin_divs[idiv]
+			plt.bar(bin_divs[idiv],surv_frac[idiv], width=w, edgecolor=mpl_cols[idiv],color='None',linewidth=BARLINE)
+
+
+		#print(dmass, g0proj)
+		#print(dmass.shape, g0proj.shape)
+		#plt.scatter(g0proj, dmass)
+		#plt.xscale('log')
+		#plt.yscale('log')
+		plt.xlim([3.0, 4.7])
+		plt.ylabel('$N_\mathrm{disc}/N_\mathrm{tot}$')
+		plt.xlabel('$\log(\mathrm{FUV flux})$  ($G_0$)')
+		plt.savefig(simulation.out+'_g0proj.pdf', bbox_inches='tight', format='pdf')
+		plt.show()
+
+
+		plt.figure(figsize=(4.,4.))
+
+
+		for idiv in range(len(bin_divs)-1):
+			in_div =  np.where((np.log10(g0proj)>bin_divs[idiv])&(np.log10(g0proj)<bin_divs[idiv+1]))[0]
+			dm_div = dmass[in_div]
+			isurv = np.where(dm_div>DMLIM)[0]
+			idest = np.where(dm_div<=DMLIM)[0]
+			nsurv = len(isurv)
+			print('Disc fraction: {0}/{1}'.format(nsurv, len(in_div)))
+			if len(in_div)>0.:
+				surv_frac[idiv] = float(nsurv)/float(len(in_div))
+			w = bin_divs[idiv+1]-bin_divs[idiv]
+			xtss = xtsub[in_div]
+			ytss = ytsub[in_div]
+			plt.scatter(xtss[isurv],ytss[isurv], c=mpl_cols[idiv], edgecolors=mpl_cols[idiv])
+			plt.scatter(xtss[idest],ytss[idest], c='None', edgecolors=mpl_cols[idiv])
+
+		ibig = np.where(mlarge>20.0)[0]
+		plt.scatter(xlargesub, ylargesub, marker='*', s=80, c='k')
+		
+		plt.ylabel('$y$ (pc)')
+		plt.xlabel('$x$  (pc)')
+		if fsize!=None:
+			plt.xlim([-fsize, fsize])
+			plt.ylim([-fsize, fsize])
+
+		plt.savefig(simulation.out+'_g0_phys_calc.pdf', bbox_inches='tight', format='pdf')
+
+
+		plt.figure(figsize=(4.,4.))
+
+
+		for idiv in range(len(bin_divs)-1):
+			in_div =  np.where((np.log10(g0vals[it][subvals])>bin_divs[idiv])&(np.log10(g0vals[it][subvals])<bin_divs[idiv+1]))[0]
+			dm_div = dmass[in_div]
+			isurv = np.where(dm_div>DMLIM)[0]
+			idest = np.where(dm_div<=DMLIM)[0]
+			nsurv = len(isurv)
+			print('Disc fraction: {0}/{1}'.format(nsurv, len(in_div)))
+			if len(in_div)>0.:
+				surv_frac[idiv] = float(nsurv)/float(len(in_div))
+			w = bin_divs[idiv+1]-bin_divs[idiv]
+			xtss = xtsub[in_div]
+			ytss = ytsub[in_div]
+			plt.scatter(xtss[isurv],ytss[isurv], c=mpl_cols[idiv], edgecolors=mpl_cols[idiv])
+			plt.scatter(xtss[idest],ytss[idest], c='None', edgecolors=mpl_cols[idiv])
+
+		ibig = np.where(mlarge>20.0)[0]
+		plt.scatter(xlargesub, ylargesub, marker='*', s=80, c='k')
+		
+		plt.ylabel('$y$ (pc)')
+		plt.xlabel('$x$  (pc)')
+		if fsize!=None:
+			plt.xlim([-fsize, fsize])
+			plt.ylim([-fsize, fsize])
+
+		plt.savefig(simulation.out+'_g0_phys_code.pdf', bbox_inches='tight', format='pdf')
+
+		plt.show()
+	return None
+
+
+
+
+def get_cinds(simulation, autocent=True, fsize= 20.0, massrange = [0.1,2.0],radlim=None, hm=False, radcentre=15.0, time=.0, theta=0.0, phi=0., fix_n=None):
+
+	t = copy.copy(simulation.t)
+	r = copy.copy(simulation.r)
+	v = copy.copy(simulation.v) 
+	m = copy.copy(simulation.m)
+
+	tunits, munits, runits = simulation.units
+
+	tarch = t*tunits*s2myr
+	r *= runits*m2pc
+	m *= munits*kg2sol
+	v *= 1e-3*runits/tunits
+
+	it = np.argmin(tarch-t)
+
+	rt = r[it]
+	xt, yt, zt = np.swapaxes(rt, 0,1)
+
+
+	if autocent:
+		ctmp = cluster_calcs.empirical_centre(rt, radcentre, 2, 50, 3)
+	else:
+		ctmp = np.array([centre[0],centre[1]])
+
+	xt = xt-ctmp[0]
+	yt = yt-ctmp[1]
+	if hm:
+		print('Finding stars inside half mass..')
+		rmags = np.sqrt(xt**2+yt**2)
+		irsrt = np.argsort(rmags)
+		rsort = rmags[irsrt]
+		msort = m[irsrt]
+		cumdist = np.cumsum(msort)
+		ncumdist = cumdist/cumdist[-1]
+		frac_func = interpolate.interp1d(ncumdist, rsort)
+		r_hm = frac_func(0.5)
+		subvals = np.where((rmags<r_hm)&(m>massrange[0])&(m<massrange[1]))[0]
+	elif radlim!=None:
+		print('Finding stars inside {0} pc..'.format(radlim))
+		rmags = np.sqrt(xt**2+yt**2)
+		subvals = np.where((rmags<radlim)&(m>massrange[0])&(m<massrange[1]))[0]
+	elif fsize!=None:
+		print('Finding stars inside field size: {0}'.format(fsize))
+		subvals = np.where((np.absolute(xt)<fsize)&(np.absolute(yt)<fsize)&(m>massrange[0])&(m<massrange[1]))[0]
+	else:
+		subvals = np.where((m>massrange[0])&(m<massrange[1]))[0]
+		
+		
+	
+	
+	if fix_n!=None:
+		if fix_n>len(subvals):
+			print('Subset greater than number of stars ({0}/{1})'.format(fix_n, len(subvals)))
+		else:
+			subvals = np.random.choice(subvals, size=fix_n, replace=False)
+
+
+	return subvals
+		
+
+	
+def plot_KE(simulation, fsize=None, centre = (.0, .0), mfilt=1.0, plot=True,autocent=False, radcentre=5.0, sp_time=0.1, fix_n=None, force=False, theta=0., phi=0.):
+	
+	print('Kinetic energy plot: Loading simulation...')	
+
+	t = copy.copy(simulation.t)
+	r = copy.copy(simulation.r)
+	v = copy.copy(simulation.v) 
+	m = copy.copy(simulation.m)
+
+	tunits, munits, runits = simulation.units
+
+	tarch = t*tunits*s2myr
+	r *= runits*m2pc
+	m *= munits*kg2sol
+	v *= 1e-3*runits/tunits
+
+	if sp_time!=None:
+		list_indices = time_inds(tarch, dt=sp_time)
+		nsnaps = len(list_indices)
+	else:
+		nsnaps = len(tarch)
+		list_indices = np.arange(nsnaps)
+	
+	biginds = np.where(m>mfilt)[0]
+
+	vswap = np.swapaxes(v, 0,2)
+	
+	vx = vswap[0][biginds]
+	vy = vswap[1][biginds]
+	vz = vswap[2][biginds]
+
+	vx= np.swapaxes(vx,0,1)
+	vy = np.swapaxes(vy,0,1)
+	vz = np.swapaxes(vz,0,1)
+	
+
+	rswap = np.swapaxes(r, 0,2)
+	#rswap = np.swapaxes(rswap, 1,2)
+	x = rswap[0][biginds]
+	y = rswap[1][biginds]
+	z = rswap[2][biginds]
+	x= np.swapaxes(x,0,1)
+	y = np.swapaxes(y,0,1)
+	z = np.swapaxes(z,0,1)
+
+
+	t_return = np.zeros(nsnaps)
+
+	if not os.path.isfile(simulation.out+'_KE.npy') or force:
+		KEr_rat = np.zeros(nsnaps)
+		KEt_rat = np.zeros(nsnaps)
+		KErt_rat = np.zeros(nsnaps)
+		ival=0
+		for it in list_indices:
+
+			if theta!=0. or phi!=0.:
+				rt = np.swapaxes(r[it],0,1)
+				vt = np.swapaxes(v[it],0,1)
+				xt, yt, zt, vxt, vyt, vzt =rotate_rx(rt[0], rt[1], rt[2], vt[0],vt[1],vt[2],theta, phi)
+				rt = np.swapaxes(np.array([xt,yt,zt]),0,1)
+				vt = np.swapaxes(np.array([vxt,vyt,vzt]),0,1)
+			else:
+				rt= r[it]
+				vt = v[it]
+				xt, yt, zt = np.swapaxes(rt, 0,1)
+				vxt, vyt, vzt = np.swapaxes(vt,0,1)
+
+			t_return[ival] = tarch[it]
+			if autocent:
+				ctmp = cluster_calcs.empirical_centre(rt, radcentre, 2, 20, 3)
+			else:
+				ctmp = np.array([centre[0],centre[1]])
+
+			print(ctmp)
+		
+			if fsize!=None:
+				xt = xt-ctmp[0]
+				yt = yt-ctmp[1]
+				subvals = np.where((np.absolute(xt)<fsize)&(np.absolute(yt)<fsize))[0]
+				xt = xt[subvals]
+				yt = yt[subvals]
+				zt = zt[subvals]
+				vxt = vxt[subvals]
+				vyt = vyt[subvals]
+				vzt  = vzt[subvals]
+				mt = m[subvals]
+			else:
+				xt = xt-ctmp[0]
+				yt = yt-ctmp[1]
+				zt = zt
+				vxt = vxt
+				vyt = vyt
+				vzt = vzt
+				mt = m
+
+			if fix_n!=None:
+				if len(xt)>fix_n:
+					print('Restricting consideration to {0}/{1} stars.'.format(fix_n, len(xt)))
+					subvals = np.random.choice(np.arange(len(xt)),size=fix_n, replace=False)
+					xt = xt[subvals]
+					yt = yt[subvals]
+					zt = zt[subvals]
+					vxt = vxt[subvals]
+					vyt = vyt[subvals]
+					vzt = vzt[subvals]
+					mt = mt[subvals]
+				else:
+					print('Warning: too few stars ({0}/{1}).'.format(fix_n, len(xt)))
+
+			print(xt[0], len(xt), vxt[0], len(vxt), mt[0], len(mt))
+
+			KEr_rat[ival], KEt_rat[ival], KErt_rat[ival] = get_KE(xt, yt, vxt, vyt, mt)
+			print(KEr_rat[ival], KEt_rat[ival], KErt_rat[ival])
+			print('At {0} Myr KE in/out: {1}'.format(tarch[it], KEr_rat[ival]))
+
+			ival+=1
+
+		np.save(simulation.out+'_KE', np.array([t_return, KEr_rat, KEt_rat, KErt_rat]))
+	else:
+		t_return, KEr_rat, KEt_rat, KErt_rat = np.load(simulation.out+'_KE.npy')
+
+	
+	if plot:
+		plt.rc('text', usetex=True)
+		plt.rc('font', family='serif')
+		plt.figure(figsize=(4.,4.))
+	
+		plt.plot(t_return, KEr_rat, 'k', label='Out/In')
+		plt.plot(t_return, KEt_rat, 'k:', label='Clockwise/Counter')
+		plt.plot(t_return, KErt_rat, 'k--', label='Radial/Azimuthal')
+
+		plt.xlabel('Time (Myr)')
+		plt.ylabel('$T^{+}/(T^{+}+T^{-})$')
+		plt.ylim([0.,1.])
+
+		plt.legend(loc='best')
+	
+		plt.savefig(simulation.out+'_KE.pdf', bbox_inches='tight', format='pdf')
+		plt.show()
+	
+
+	return t_return, KEr_rat, KEt_rat, KErt_rat
+
+def plot_MoransI(simulation, fsize=None, centre = (.0, .0), mfilt=1.0, plot=True,autocent=False, radcentre=5.0, sp_time=0.1, fix_n=None, force=False, vnoise=0.0):
+	
+	print('Morans I plot: Loading simulation...')	
+
+	t = copy.copy(simulation.t)
+	r = copy.copy(simulation.r)
+	v = copy.copy(simulation.v) 
+	m = copy.copy(simulation.m)
+
+	tunits, munits, runits = simulation.units
+
+	tarch = t*tunits*s2myr
+	r *= runits*m2pc
+	m *= munits*kg2sol
+	v *= 1e-3*runits/tunits
+
+	if sp_time!=None:
+		list_indices = time_inds(tarch, dt=sp_time)
+		nsnaps = len(list_indices)
+	else:
+		nsnaps = len(tarch)
+		list_indices = np.arange(nsnaps)
+	
+	
+	
+
+	rswap = np.swapaxes(r, 0,2)
+	#rswap = np.swapaxes(rswap, 1,2)
+	x = rswap[0]
+	y = rswap[1]
+
+	x= np.swapaxes(x,0,1)
+	y = np.swapaxes(y,0,1)
+
+
+	t_return = np.zeros(nsnaps)
+
+	if not os.path.isfile(simulation.out+'_MoransI.npy') or force:
+		Morans_Ix = np.zeros(nsnaps)
+		Morans_Iy = np.zeros(nsnaps)
+		ival=0
+		for it in list_indices:
+
+			t_return[ival] = tarch[it]
+			if autocent:
+				ctmp = cluster_calcs.empirical_centre(r[it], radcentre, 2, 20, 3)
+			else:
+				ctmp = np.array([centre[0],centre[1]])
+		
+			if fsize!=None:
+				xt = x[it]-ctmp[0]
+				yt = y[it]-ctmp[1]
+				if mfilt!=None:
+					subvals = np.where((np.absolute(xt)<fsize)&(np.absolute(yt)<fsize)&(m>mfilt))[0]
+				else:
+					subvals = np.where((np.absolute(xt)<fsize)&(np.absolute(yt)<fsize))[0]
+					
+
+			if fix_n!=None:
+				if len(subvals)>fix_n:
+					subvals = np.random.choice(subvals, size=fix_n, replace=False)
+				else:
+					print('Warning: insufficient number of stars {0}/{1}'.format(subvals, fix_n))
+
+			Morans_Ix[ival], Morans_Iy[ival] =  cluster_calcs.Morans_I_vcorr(r[it][subvals], v[it][subvals], 1000.*au2pc, vnoise)
+			
+			print('At {0} Myr Morans I x/y ({3} stars): {1}/{2}'.format(tarch[it],Morans_Ix[ival], Morans_Iy[ival], len(subvals)))
+
+			ival+=1
+
+		
+		np.save(simulation.out+'_MoransI', np.array([t_return,Morans_Ix, Morans_Iy]))
+	else:
+		t_return,Morans_Ix, Morans_Iy = np.load(simulation.out+'_MoransI.npy')
+
+	
+	if plot:
+		plt.rc('text', usetex=True)
+		plt.rc('font', family='serif')
+		plt.figure(figsize=(4.,4.))
+	
+		plt.plot(t_return, Morans_Ix, 'k:', label='$x$')
+		plt.plot(t_return, Morans_Iy, 'k--', label='$y$s')
+
+		plt.xlabel('Time (Myr)')
+		plt.ylabel("Moran's $I$-statistic")
+
+		plt.legend(loc='best')
+	
+		plt.savefig(simulation.out+'_MoransI.pdf', bbox_inches='tight', format='pdf')
+		plt.show()
+	
+
+	return t_return, Morans_Ix, Morans_Iy
+
+
+
+def plot_cmass(simulation, centre = (.0, .0),plot=True,autocent=False, radcentre=5.0, sp_time=0.1, dims=2, force=False):
+	
+	print('Central mass plot: Loading simulation...')	
+
+	t = copy.copy(simulation.t)
+	r = copy.copy(simulation.r)
+	m = copy.copy(simulation.m)
+
+	tunits, munits, runits = simulation.units
+
+	tarch = t*tunits*s2myr
+	r *= runits*m2pc
+	m *= munits*kg2sol
+
+	if sp_time!=None:
+		list_indices = time_inds(tarch, dt=sp_time)
+		nsnaps = len(list_indices)
+	else:
+		nsnaps = len(tarch)
+		list_indices = np.arange(nsnaps)
+	
+
+	
+
+	rswap = np.swapaxes(r, 0,2)
+	#rswap = np.swapaxes(rswap, 1,2)
+	x = rswap[0]
+	y = rswap[1]
+	z = rswap[2]
+
+	x= np.swapaxes(x,0,1)
+	y = np.swapaxes(y,0,1)
+	z = np.swapaxes(z,0,1)
+
+
+	t_return = np.zeros(nsnaps)
+
+	if not os.path.isfile(simulation.out+'_CMASS.npy') or force:
+		cmass = np.zeros(nsnaps)
+		ival=0
+		for it in list_indices:
+
+			t_return[ival] = tarch[it]
+			if autocent:
+				ctmp = cluster_calcs.empirical_centre(r[it], radcentre, dims, 50, 2)
+			else:
+				ctmp = np.array([centre[0],centre[1]])
+		
+			xt = x[it]-ctmp[0]
+			yt = y[it]-ctmp[1]
+			if dims==3:
+				zt = z[it]-ctmp[2]
+				subvals = np.where((x[it]**2.+y[it]**2.+z[it]**2.)<radcentre**2.)[0]
+			else:
+				subvals = np.where((x[it]**2.+y[it]**2.)<radcentre**2.)[0]
+			cmass[ival] = np.sum(m[subvals])
+			
+			print('At {0} Myr central mass: {1}'.format(tarch[it], cmass[ival]))
+
+			ival+=1
+
+		
+		np.save(simulation.out+'_CMASS', np.array([t_return, cmass]))
+	else:
+		t_return, cmass = np.load(simulation.out+'_CMASS.npy')
+
+	
+	if plot:
+		plt.rc('text', usetex=True)
+		plt.rc('font', family='serif')
+		plt.figure(figsize=(4.,4.))
+	
+		plt.plot(t_return, cmass, 'k')
+		plt.xlabel('Time (Myr)')
+		plt.ylabel('Central Mass $d<{0}$ pc  ($M_\odot$)'.format(radcentre))
+		#plt.ylim([1e4,4e4])
+		#plt.yticks([1e4, 2e4, 3e4, 4e4],[1e4, 2e4, 3e4, 4e4])
+		plt.legend(loc='best')
+	
+		plt.savefig(simulation.out+'_CMASS.pdf', bbox_inches='tight', format='pdf')
+		plt.show()
+	
+
+	return t_return, cmass
+
+def plot_angmom(simulation, fsize=None, directional=True, centre = (.0, .0)):
+	
+	t = copy.copy(simulation.t)
+	r = copy.copy(simulation.r)
+	v = copy.copy(simulation.v) 
+	m = copy.copy(simulation.m)
+
+	tunits, munits, runits = simulation.units
+
+	tarch = t*tunits*s2myr
+	r *= runits*m2pc
+	m *= munits*kg2sol
+	v *= 1e-3*runits/tunits
+
+	vswap = np.swapaxes(v, 0,2)
+	
+	vx = vswap[0]
+	vy = vswap[1]
+	vz = vswap[2]
+
+	vx= np.swapaxes(vx,0,1)
+	vy = np.swapaxes(vy,0,1)
+	vz = np.swapaxes(vz,0,1)
+	
+
+	rswap = np.swapaxes(r, 0,2)
+	#rswap = np.swapaxes(rswap, 1,2)
+	x = rswap[0]
+	y = rswap[1]
+
+	x= np.swapaxes(x,0,1)
+	y = np.swapaxes(y,0,1)
+
+	x -= centre[0]
+	y -= centre[1]
+
+	def azim_velocity(xtmp,ytmp,vxtmp,vytmp):
+		vt = (vytmp*xtmp-ytmp*vxtmp)/np.sqrt(xtmp**2.+ytmp**2.)
+		return vt
+
+	
+	Lt_rat = np.zeros(len(tarch))
+	
+	for it in range(len(tarch)):
+		if fsize!=None:
+			subvals = np.where(np.absolute(x[it])<fsize)[0]
+			xt = x[it][subvals]
+			yt = y[it][subvals]
+			vxt = vx[it][subvals]
+			vyt = vy[it][subvals]
+			subvals = np.where(np.absolute(yt)<fsize)[0]
+			xt = xt[subvals]
+			yt = yt[subvals]
+			vxt = vxt[subvals]
+			vyt = vyt[subvals]
+		else:
+			xt = x[it]
+			yt = y[it]
+			vxt = vx[it]
+			vyt = vy[it]
+
+		rt = np.sqrt(xt**2.+yt**2.)
+
+		tvst =  azim_velocity(xt, yt, vxt, vyt)
+
+		tneg = np.where(tvst<0.)[0]
+		tpos = np.where(tvst>0.)[0]
+		tvn = tvst[tneg]
+		tvp = tvst[tpos]
+		rtp = rt[tpos]
+		rtn = rt[tneg]
+
+		Lt_rat[it] = np.sum(tvp*rtp)/(np.absolute(np.sum(rtn*tvn))+np.absolute(np.sum(rtp*tvp)))
+
+	
+	
+	plt.rc('text', usetex=True)
+	plt.rc('font', family='serif')
+	plt.figure(figsize=(4.,4.))
+	
+	plt.plot(tarch, Lt_rat, 'k:')
+
+	plt.xlabel('Time (Myr)')
+	plt.ylabel('$L^{+}/(L^{+}+L^{-})$')
+
+	plt.show()
+		
+
+
+
+def plot_vfield_snap(simulation, fsize=None, direct=True, centre = (.0, .0), mfilt=1.0, ssize=None, time=0., autocent=False, radcentre=10.0, ptype=1):
+	
+	t = copy.copy(simulation.t)
+	r = copy.copy(simulation.r)
+	v = copy.copy(simulation.v) 
+	m = copy.copy(simulation.m)
+
+	tunits, munits, runits = simulation.units
+
+	tarch = t*tunits*s2myr
+	r *= runits*m2pc
+	m *= munits*kg2sol
+	v *= 1e-3*runits/tunits
+
+
+	n = np.argmin(np.absolute(tarch-time))
+
+	vswap = np.swapaxes(v, 0,2)
+	
+	vx = vswap[0]
+	vy = vswap[1]
+	vz = vswap[2]
+
+	vx= np.swapaxes(vx,0,1)
+	vy = np.swapaxes(vy,0,1)
+	vz = np.swapaxes(vz,0,1)
+	
+
+	rswap = np.swapaxes(r, 0,2)
+	#rswap = np.swapaxes(rswap, 1,2)
+	x = rswap[0]
+	y = rswap[1]
+	z = rswap[2]		
+
+
+	x= np.swapaxes(x,0,1)
+	y = np.swapaxes(y,0,1)
+	z = np.swapaxes(z,0,1)
+
+	if autocent:
+		ctmp = cluster_calcs.empirical_centre(r[n], radcentre, 2, 50, 3)
+		ctmp = [ctmp[0]-2.0, ctmp[1]]
+	else:
+		ctmp = np.array([centre[0],centre[0]])
+
+	x -= ctmp[0]
+	y -= ctmp[1]
+	
+
+	plt.rc('text', usetex=True)
+	plt.rc('font', family='serif')
+	fig, ax = plt.subplots(figsize=(4.,4.))
+
+	if mfilt==None:
+		mfilt=0.0
+	# create the first plot
+	biginds = np.where(m>mfilt)[0]
+
+
+	#point=ax.scatter(x[n][biginds], y[n][biginds], s=5, c='k')
+	#pointb =ax.scatter(x[0][biginds], y[0][biginds], z[0][biginds],s=10.*SFACT*m[biginds]*munits*kg2sol, c='c', zorder=3)
+	if fsize!=None:	
+		rmax = fsize
+	else:
+		rmax = np.amax(x)
+
+	ax.legend()
+	ax.set_xlim([-rmax, rmax])
+	ax.set_ylim([-rmax, rmax])
+
+
+
+	ax.set_xlabel('x (pc)', color='k')
+	ax.set_ylabel('y (pc)', color='k')
+
+	#ttext = ax.text(0.05, 1.03, "$t = $ {0} Myrs".format(time), color='k',transform=ax.transAxes)
+
+	filt1 = np.where((np.absolute(x[n])<rmax)&(np.absolute(y[n])<rmax)&(m>mfilt))[0]		
+	
+	if ssize!=None:
+		filtdb1 = np.random.choice(filt1, size=ssize, replace=False)
+	else:
+		filtdb1 = filt1
+
+	
+
+	xtmp = x[n][filtdb1]
+	ytmp = y[n][filtdb1]
+	vxtmp = vx[n][filtdb1]
+	vytmp = vy[n][filtdb1]
+	vxtmp -= np.mean(vxtmp)
+	vytmp -= np.mean(vytmp)
+	point=ax.scatter(xtmp,ytmp, s=1, c='k')
+	#point=ax.scatter(x[n][filt2], y[n][filt2], s=30, c='cyan')
+	carray = np.zeros(len(filtdb1))
+	carray[:] = 0.
+	vr = (vxtmp*xtmp+ytmp*vytmp)/np.sqrt(xtmp**2.+ytmp**2.)
+	vravg = np.mean(vr)
+	vr_x = vr*(xtmp/np.sqrt(xtmp**2.+ytmp**2.))
+	vr_y = vr*(ytmp/np.sqrt(xtmp**2.+ytmp**2.))
+
+	vt = (vytmp*xtmp-ytmp*vxtmp)/np.sqrt(xtmp**2.+ytmp**2.)
+	vtavg = np.mean(vt)
+	vt_x = -vt*(ytmp/np.sqrt(xtmp**2.+ytmp**2.))
+	vt_y = vt*(xtmp/np.sqrt(xtmp**2.+ytmp**2.))
+
+
+	print('<V_r> = ', vravg)
+	print('<V_t> = ', vtavg)
+	print('sigma_x = ', np.sqrt(np.mean(vxtmp*vxtmp)))
+	print('sigma_y = ', np.sqrt(np.mean(vytmp*vytmp)))
+	
+	NORM = 3e2
+
+	if direct:
+		if ptype==1:
+			carray[np.where(vr<0.0)[0]] = 1.
+			print(carray.shape)
+			print(xtmp.shape, vr_x.shape)
+			Q = ax.quiver(xtmp, ytmp, vr_x, vr_y, carray, scale=NORM)
+			#point=ax.scatter(xtmp,ytmp, s=1, c=carray)
+		else:	
+			carray[np.where(vt<0.0)[0]] = 1.
+			Q = ax.quiver(xtmp, ytmp, vt_x, vt_y, carray, scale=NORM)
+			#point=ax.scatter(xtmp,ytmp, s=1, c=carray)
+	else:
+
+		colors = np.arctan2(vxtmp, vytmp)
+		norm = Normalize()
+		norm.autoscale(colors)
+
+		ROTATE = -np.pi/2.
+
+		colors *= -1.
+		colors+=ROTATE
+		colors[np.where(colors>np.pi)] -= 2.*np.pi
+		colors[np.where(colors<-np.pi)] += 2.*np.pi
+			
+
+		# we need to normalize our colors array to match it colormap domain
+		# which is [0, 1]
+		colormap = cm.rainbow
+		Qdum = ax.quiver(xtmp, ytmp, vxtmp,vytmp,color='k', scale=NORM)
+		Q = ax.quiver(xtmp, ytmp, vxtmp,vytmp,color=colormap(norm(colors)), scale=NORM)
+		#point=ax.scatter(xtmp,ytmp, s=1, c=carray)
+		#pointb=ax.scatter(x[n][biginds], y[n][biginds], z[n][biginds],s=10.*SFACT*m[biginds]*munits*kg2sol, c='c', zorder=3)
+		#ax.text(0.35, 1.01, "$\\langle v_r^2 \\rangle ^{1/2} =  %.2lf$ km/s"%(np.sqrt(vravg)), transform=ax.transAxes,color='k')
+		#ax.text(0.65, 1.01, "$\\langle v_\\theta^2 \\rangle  ^{1/2} =  %.2lf$ km/s"%(np.sqrt(vtavg)), transform=ax.transAxes,color='k')
+		ax.quiverkey(Qdum, 0.45, 0.915, 20.0, r'$20$ km/s', labelpos='E', coordinates='figure')
+	
+		ax.legend()
+
+		display_axes = fig.add_axes([0.75,0.75,0.13,0.13], projection='polar')
+		display_axes._direction = 2.*np.pi ## This is a nasty hack - using the hidden field to 
+				                  ## multiply the values such that 1 become 2*pi
+				                  ## this field is supposed to take values 1 or -1 only!!
+
+		#norm = mpl.colors.Normalize(.0, 2.*np.pi)
+
+		# Plot the colorbar onto the polar axis
+		# note - use orientation horizontal so that the gradient goes around
+		# the wheel rather than centre out
+		quant_steps = 2056
+		cb = mpl.colorbar.ColorbarBase(display_axes, cmap=colormap,
+				                   norm=norm,
+				                   orientation='horizontal')
+
+		# aesthetics - get rid of border and axis labels                                   
+		cb.outline.set_visible(False)                                 
+		display_axes.set_axis_off()
+
+	
+	plt.savefig(simulation.out+'_vfield.pdf', bbox_inches='tight', format='pdf')
+	plt.show()
+
+	return None
+
+
+def plot_vfield(simulation, fsize=None, directional=True, centre = (.0, .0), mfilt=1.0, ssize=None, sp_time=0.1):
+	
+	t = copy.copy(simulation.t)
+	r = copy.copy(simulation.r)
+	v = copy.copy(simulation.v) 
+	m = copy.copy(simulation.m)
+
+	tunits, munits, runits = simulation.units
+
+	tarch = t*tunits*s2myr
+	r *= runits*m2pc
+	m *= munits*kg2sol
+	v *= 1e-3*runits/tunits
+
+
+	if sp_time!=None:
+		list_indices = time_inds(tarch, dt=sp_time)
+		nsnaps = len(list_indices)
+	else:
+		nsnaps = len(tarch)
+		list_indices = np.arange(nsnaps)
+
+
+	vswap = np.swapaxes(v, 0,2)
+	
+	vx = vswap[0]
+	vy = vswap[1]
+	vz = vswap[2]
+
+	vx= np.swapaxes(vx,0,1)
+	vy = np.swapaxes(vy,0,1)
+	vz = np.swapaxes(vz,0,1)
+	
+
+	rswap = np.swapaxes(r, 0,2)
+	#rswap = np.swapaxes(rswap, 1,2)
+	x = rswap[0]
+	y = rswap[1]
+	z = rswap[2]		
+
+
+	x= np.swapaxes(x,0,1)
+	y = np.swapaxes(y,0,1)
+	z = np.swapaxes(z,0,1)
+
+	x -= centre[0]
+	y -= centre[1]
+
+	fig, ax = plt.subplots()
+
+	# create the first plot
+	biginds = np.where(m>mfilt)[0]
+
+
+	point=ax.scatter(x[0][biginds], y[0][biginds], s=5, c='k')
+	#pointb =ax.scatter(x[0][biginds], y[0][biginds], z[0][biginds],s=10.*SFACT*m[biginds]*munits*kg2sol, c='c', zorder=3)
+	if fsize!=None:	
+		rmax = fsize
+	else:
+		rmax = np.amax(x)
+
+	ax.legend()
+	ax.set_xlim([-rmax, rmax])
+	ax.set_ylim([-rmax, rmax])
+
+
+
+	ax.set_xlabel('x (pc)', color='k')
+	ax.set_ylabel('y (pc)', color='k')
+
+	ttext = ax.text(0.05, 0.95, "$t = $ {0} Myrs".format(0.0), transform=ax.transAxes, color='k')
+
+	
+	def update_axes(n, x, y, vx, vy, m, times,ax, ptype, direct):
+		ax.cla()
+		ax.set_xlim([-rmax, rmax])
+		ax.set_ylim([-rmax, rmax])
+		ax.text(0.05, 1.01, "$t ={:03.2f}$ Myrs".format(times[n]), transform=ax.transAxes,color='k')
+		print('Time: {:03.2f}'.format(times[n]))
+
+		
+
+		filt1 = np.where((np.absolute(x[n])<rmax)&(np.absolute(y[n])<rmax)&(m>mfilt))[0]		
+		
+		if ssize!=None:
+			filtdb1 = np.random.choice(filt1, size=ssize, replace=False)
+		else:
+			filtdb1 = filt1
+
+		xtmp = x[n][filtdb1]
+		ytmp = y[n][filt1]
+		vxtmp = vx[n][filtdb1]
+		vytmp = vy[n][filtdb1]
+		vxtmp -= np.mean(vxtmp)
+		vytmp -= np.mean(vytmp)
+		point=ax.scatter(xtmp,ytmp, s=5, c='k')
+		#point=ax.scatter(x[n][filt2], y[n][filt2], s=30, c='cyan')
+		carray = np.zeros(len(filt1))
+		carray[:] = 0.
+		vr = (vxtmp*xtmp+ytmp*vytmp)/np.sqrt(xtmp**2.+ytmp**2.)
+		vravg = np.mean(vr)
+		vr_x = vr*(xtmp/np.sqrt(xtmp**2.+ytmp**2.))
+		vr_y = vr*(ytmp/np.sqrt(xtmp**2.+ytmp**2.))
+
+		vt = (vytmp*xtmp-ytmp*vxtmp)/np.sqrt(xtmp**2.+ytmp**2.)
+		vtavg = np.mean(vt)
+		vt_x = -vt*(ytmp/np.sqrt(xtmp**2.+ytmp**2.))
+		vt_y = vt*(xtmp/np.sqrt(xtmp**2.+ytmp**2.))
+
+
+		print('<V_r> = ', vravg)
+		print('<V_t> = ', vtavg)
+		print('sigma_x = ', np.sqrt(np.mean(vxtmp**2.)))
+		print('sigma_y = ', np.sqrt(np.mean(vytmp**2.)))
+		if direct:
+			if ptype==1:
+				carray[np.where(vr<0.0)[0]] = 1.
+				Q = ax.quiver(xtmp, ytmp, vr_x, vr_y, carray, units='width')
+				point=ax.scatter(xtmp,ytmp, s=5, c=carray)
+			else:	
+				carray[np.where(vt<0.0)[0]] = 1.
+				Q = ax.quiver(xtmp, ytmp, vt_x, vt_y, carray, units='width')
+				point=ax.scatter(xtmp,ytmp, s=5, c=carray)
+		else:
+			Q = ax.quiver(xtmp, ytmp, vxtmp, vytmp, carray, units='width')
+			point=ax.scatter(xtmp,ytmp, s=5, c=carray)
+		#pointb=ax.scatter(x[n][biginds], y[n][biginds], z[n][biginds],s=10.*SFACT*m[biginds]*munits*kg2sol, c='c', zorder=3)
+		#ax.text(0.35, 1.01, "$\\langle v_r^2 \\rangle ^{1/2} =  %.2lf$ km/s"%(np.sqrt(vravg)), transform=ax.transAxes,color='k')
+		#ax.text(0.65, 1.01, "$\\langle v_\\theta^2 \\rangle  ^{1/2} =  %.2lf$ km/s"%(np.sqrt(vtavg)), transform=ax.transAxes,color='k')
+		ax.quiverkey(Q, 0.55, 0.91, 5, r'$5$ km/s', labelpos='E', coordinates='figure')
+		
+		ax.legend()
+
+		return point
+
+	ani=animation.FuncAnimation(fig, update_axes, len(tarch[list_indices]), fargs=(x[list_indices], y[list_indices], vx[list_indices], vy[list_indices], m ,tarch[list_indices], ax, 1, directional))
+
+	# make the movie file demo.mp4
+
+	writer=animation.writers['ffmpeg'](fps=1)
+	dpi = 150
+	ani.save(simulation.out+'_velocity_field.mp4',writer=writer,dpi=dpi)
+	
+	plt.show()
+
+
+if __name__=='__main__':
+
+	fles = ['visctest_2.75_0.02','visctest_2.75_0.01', 'visctest_2.75_0.005', 'visctest_2.75_0.001']
+	fles = ['visctest_2.0_0.02','visctest_2.0_0.01', 'visctest_2.0_0.005', 'visctest_2.0_0.001']
+	fles = ['visctest_1.0_0.02','visctest_1.0_0.01', 'visctest_1.0_0.005', 'visctest_1.0_0.001']
+	fles = ['visctest_2.5_0.02','visctest_2.5_0.01', 'visctest_2.5_0.005', 'visctest_2.5_0.001']
+
+	alphas = ['$\\alpha = 2 \cdot 10^{-2}$', '$\\alpha = 10^{-2}$','$\\alpha = 5\cdot 10^{-3}$','$\\alpha = 10^{-3}$']
+	lines = ['solid', 'dashed', 'dashdot', 'dotted']
+	CB_color_cycle = ['#377eb8', '#ff7f00', '#4daf4a','#f781bf', '#a65628', '#984ea3','#999999', '#e41a1c', '#dede00']
+	ialph = 0
+
+	xguar = [] 
+	iflag=False
+
+	plt.figure(figsize=(4.,4.))
+	for fle in fles:
+		if os.path.isfile(fle+'_projg0_discs.npy'):
+			print('Found:', fle)
+			g0vals, fluxes, mdisc, rdisc, xt_d, yt_d, zt_d , m_d, assoc = np.load(fle+'_projg0_discs.npy')
+			rt_d = np.swapaxes(np.array([xt_d,yt_d, zt_d]),0,1)
+			xt_b, yt_b, zt_b, m_b = np.load(fle+'_projg0_OBstars.npy')
+			tind=-1
+			#mbig = np.where(m>mfilt)[0]
+	
+			plt.rc('text', usetex=True)
+			plt.rc('font', family='serif')
+	
+
+
+
+			DMLIM=1e-5
+
+			mpl_cols = ['k', 'r', 'orange', 'lawngreen', 'brown', 'b']
+			plt.rc('text', usetex=True)
+			plt.rc('font', family='serif')
+
+			bin_divs = [3.0, 3.35, 3.5, 3.75, 4.0, 4.35,4.7]
+	
+			surv_frac = np.zeros(len(bin_divs)-1)
+
+
+	
+			surv_frac_2 = np.zeros(len(bin_divs)-1)
+
+			for idiv in range(len(bin_divs)-1):
+				in_div =  np.where((np.log10(fluxes)>bin_divs[idiv])&(np.log10(fluxes)<bin_divs[idiv+1]))[0]
+				dm_div = mdisc[tind][in_div]
+				nsurv = len(np.where(dm_div>DMLIM)[0])
+				print('Survival fraction {0}/{1}'.format(nsurv, len(in_div)))
+				if len(in_div)>0.:
+					surv_frac_2[idiv] = float(nsurv)/float(len(in_div))
+				w = bin_divs[idiv+1]-bin_divs[idiv]
+				plt.bar(bin_divs[idiv],surv_frac_2[idiv], width=w, edgecolor=CB_color_cycle[ialph],color='None', linestyle=lines[0],linewidth=BARLINE)
+
+				if iflag==False:
+					xguar.append(bin_divs[idiv]+w/2.)
+					
+			plt.plot([],[], linestyle=lines[0], label=alphas[ialph], color=CB_color_cycle[ialph], linewidth=BARLINE)
+			iflag=True
+
+			ialph+=1
+		else:
+			print('No such file:', fle+'_projg0_discs.npy')
+			ialph+=1
+
+
+
+
+	yguar = [0.39, 0.35, 0.31, 0.27, 0.22, 0.18]
+
+	plt.scatter(xguar, yguar, marker='+',linewidths = BARMARK,s=BARPOINT,  color='k')
+	plt.ylim([0.,1.])
+	plt.xlim([3.0, 4.7])
+	plt.ylabel('$N_\mathrm{disc}/N_\mathrm{tot}$')
+	plt.xlabel('$\log(\mathrm{projected }\, F_\mathrm{FUV})$  ($G_0$)')
+
+	plt.legend(loc=2, fontsize=10)
+	plt.savefig('g0allbars.pdf', bbox_inches='tight', format='pdf')
+
+	plt.show()
+
+
+	

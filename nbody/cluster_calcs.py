@@ -34,3 +34,5 @@ def total_kinetic(vstars, mstars):
     vsq = np.linalg.norm(vstars, axis=1)**2
     ke = np.sum(0.5*mstars*vsq)
     return ke
+    
+ 
