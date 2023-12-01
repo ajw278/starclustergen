@@ -412,7 +412,7 @@ class nbody6_cluster:
 		#KZ(15) - Triple, quad, chain and merger searc 22
 		indict['KZ'].append(2)		
 		#KZ(16) -Auto-adjustment regularisation parameters 23
-		indict['KZ'].append(0)
+		indict['KZ'].append(1)
 		#KZ(17) - auto asjust ETAI etc. 24
 		indict['KZ'].append(0)
 		#KZ(18) - hierarchical systems 25 

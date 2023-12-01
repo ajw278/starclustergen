@@ -57,7 +57,7 @@ sv0 *= mas2rad*distance*pc2cm/year2s
 
 no_hard_edge=True
 minlogP = 3.0
-maxlogP = 8.0
+maxlogP = 9.0
 
 # Define the binary fraction functions
 def f_logP_lt_1(M1):
@@ -464,7 +464,7 @@ if __name__=='__main__':
         binsep = distance*deg2rad*(10.**-1.5)/1.5
         Lbox  = 60.0
         lNbox_est = math.log2(Lbox/binsep)
-        Nbox = int(2.**(int(lNbox_est)-2))
+        Nbox = int(2.**(int(lNbox_est)))
         print(Nbox)
         ndim=3
         seed=231
@@ -547,9 +547,9 @@ if __name__=='__main__':
     print(rs_all.shape, vs_all.shape)
     nbins0 = int(np.sum(bf))
 
-    sim = nbi.nbody6_cluster(rs_all.T, vs_all.T, ms_all,  outname='clustersim', dtsnap_Myr =0.1, \
+    sim = nbi.nbody6_cluster(rs_all.T, vs_all.T, ms_all,  outname='clustersim', dtsnap_Myr =0.01, \
                 tend_Myr = 3.0, gasparams=None, etai=0.05, etar=0.01, etau=0.2, dtmin_Myr=1e-6, \
-                rmin_pc=1e-4,dtjacc_Myr=0.05, load=False, ctype='smooth', force_incomp = False, \
+                rmin_pc=1e-2,dtjacc_Myr=0.05, load=False, ctype='smooth', force_incomp = False, \
                     rtrunc=50.0, nbin0=nbins0)
     sim.evolve()
     cp.plot_3dpos(sim)

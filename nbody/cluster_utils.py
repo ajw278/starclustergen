@@ -26,7 +26,7 @@ def get_nbody_units(ms_Msol, rs_pc, vs_kms):
 	
 	ms = ms_Msol/kg2sol
 	rs = rs_pc/m2pc
-	vs = vs_kms*1e3*2.0
+	vs = vs_kms*1e3
 	
 	#M_units in SI is easy
 	m_units = np.sum(ms)
