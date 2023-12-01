@@ -56,7 +56,7 @@ r0 = deg2rad*distance
 sv0 *= mas2rad*distance*pc2cm/year2s
 
 no_hard_edge=True
-minlogP = 7.99
+minlogP = 3.0
 maxlogP = 8.0
 
 # Define the binary fraction functions
@@ -535,17 +535,21 @@ if __name__=='__main__':
     
    
 
-    irand = np.random.choice(np.arange(len(rs_all.T)), size=200, replace=False)
+    """irand = np.random.choice(np.arange(len(rs_all.T)), size=len(rs_all.T), replace=False)
+    rs_all[0]  =rs_all[0, irand]
+    irand = np.random.choice(np.arange(len(rs_all.T)), size=len(rs_all.T), replace=False)
+    rs_all[1]  =rs_all[1, irand]
+    irand = np.random.choice(np.arange(len(rs_all.T)), size=len(rs_all.T), replace=False)
+    rs_all[2]  =rs_all[2, irand]"""
     nbins0= 0
-    print(irand)
-
+    
     print(np.median(np.absolute(rs_all)),np.median(np.absolute(vs_all)), np.median(ms_all))
     print(rs_all.shape, vs_all.shape)
     nbins0 = int(np.sum(bf))
 
-    sim = nbi.nbody6_cluster(rs_all.T, vs_all.T, ms_all,  outname='clustersim', dtsnap_Myr =1.0, \
+    sim = nbi.nbody6_cluster(rs_all.T, vs_all.T, ms_all,  outname='clustersim', dtsnap_Myr =0.1, \
                 tend_Myr = 3.0, gasparams=None, etai=0.05, etar=0.01, etau=0.2, dtmin_Myr=1e-6, \
-                dtadj_Myr=0.1, rmin_pc=1e-4,dtjacc_Myr=0.05, load=False, ctype='smooth', force_incomp = False, \
+                rmin_pc=1e-4,dtjacc_Myr=0.05, load=False, ctype='smooth', force_incomp = False, \
                     rtrunc=50.0, nbin0=nbins0)
     sim.evolve()
     cp.plot_3dpos(sim)

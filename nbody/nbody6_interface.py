@@ -557,7 +557,7 @@ class nbody6_cluster:
 
 		indict['Q'] =  Qvir
 
-		if restart!=None and indict['KSTART']>2:
+		if not restart is None and indict['KSTART']>2:
 			if indict['KSTART']==3 or indict['KSTART']==5:
 				indict['DELTAT'] = max(self.dt/10., min(self.dt, 1e-2))
 				indict['DTADJ'] = max(self.dtadj/10.,min(self.dtadj, 1e-2))
@@ -571,9 +571,11 @@ class nbody6_cluster:
 				
 		else:
 			#DTADJ - time interval for parameter adjustment (nbody units)	4 (or maybe this takes ages)
-			indict['DTADJ'] = self.dtadj
+			indict['DTADJ'] = self.dt
 			#DELTAT  - time interval for writing output data (*NFIX) -nunits	5
 			indict['DELTAT'] = self.dt
+		
+		print(indict)
 	
 
 		
