@@ -8,6 +8,7 @@ from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.animation import FuncAnimation
 import plot_utils as cpu
 import numpy as np
+import cluster_calcs as cc
 
 plt.rc('text', usetex=True)
 plt.rc('text.latex', preamble='\\usepackage{color}')
@@ -106,7 +107,7 @@ def plot_3dpos(simulation, dim=None, save=True, rlim=20.0):
 	
 		
 	
-def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=1000, rmax = 20.0, time=3.0, plotall=False):
+def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=1000, rmax = None,  time=3.0, plotall=True):
 
 	t = simulation.t
 	r = simulation.r
@@ -125,7 +126,7 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 
 	isub= np.arange(len(m))
 
-	if type(rmax)!=type(None):
+	if  not rmax is None:
 		rmag = np.linalg.norm(r[tind],axis=1)*runits*m2pc
 		isub = isub[np.where(rmag<rmax)[0]]
 		if len(isub)>subset:
@@ -147,10 +148,6 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 	print('Starting encounter analysis...')
 	
 
-
-	plt.rc('text', usetex=True)
-	plt.rc('font', family='serif')
-
 	if not os.path.isfile(simulation.out+'_xmin.npy'):
 		xmins = np.zeros(len(isub))
 		ict=0
@@ -158,7 +155,7 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 			print('Scanning encounters for i={2} ({0}/{1})'.format(ict+1, len(isub), istar))
 			if not os.path.isfile(simulation.out+'_enchist_{0}.npy'.format(istar)):
 				print('Generating global encounter history for star {0}... '.format(istar))
-				cx, cv, cm, cn = cluster_calcs.encounter_history_istar(istar, r, v, m, 4)
+				cx, cv, cm, cn = cc.encounter_history_istar(istar, r, v, m, 4)
 		
 				x_order = np.array([])
 				e_order = np.array([])
@@ -167,7 +164,7 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 
 				print('Obtaining neighbour lists for star {0}.'.format(istar))
 			
-				logsx, logse, logst = cluster_calcs.encounter_params(np.array(cx), np.array(cv), np.array(cm), t, float(m[istar]))
+				logsx, logse, logst = cc.encounter_params(np.array(cx), np.array(cv), np.array(cm), t, float(m[istar]))
 				icol=0
 				
 				if plotall:

@@ -34,5 +34,53 @@ def total_kinetic(vstars, mstars):
     vsq = np.linalg.norm(vstars, axis=1)**2
     ke = np.sum(0.5*mstars*vsq)
     return ke
-    
- 
+
+def encounter_history_istar(istar, rstars, vstars,  mstars, nclose=3):
+	
+	#Want rstars in form [star][time][dimension]
+	rstars = np.swapaxes(rstars, 0,1)
+	vstars = np.swapaxes(vstars, 0,1)
+
+	nghbr_list = []
+
+	nghbrs = np.zeros((rstars.shape[1], nclose))
+	closest_x = np.zeros((rstars.shape[1], nclose, rstars.shape[2]))
+	closest_v = np.zeros((rstars.shape[1], nclose, rstars.shape[2]))
+	closest_m = np.zeros((rstars.shape[1], nclose))
+
+	cx = []
+	cv = []
+	cm = []
+
+
+	drstars = rstars - rstars[istar]
+	dvstars = vstars - vstars[istar]
+	drmags = np.linalg.norm(drstars, axis=2)
+
+	drstars = np.swapaxes(drstars, 0,1)
+	dvstars = np.swapaxes(dvstars, 0,1)
+	drmags = np.swapaxes(drmags, 0,1)
+
+	nblst = []
+	
+	for itime in range(len(drmags)):
+		ninds = np.argsort(drmags[itime])[1:nclose+1]
+		for nb in ninds:
+			if not (nb in nblst):
+				nblst.append(nb)
+		nghbrs[itime] = ninds
+		closest_x[itime] = drstars[itime][ninds]
+		closest_v[itime] = dvstars[itime][ninds]
+		closest_m[itime] = mstars[ninds]
+
+	for nb in nblst:
+		#[star][time][dimension] -> time, star, dim
+		cxval = np.swapaxes(drstars,0,1)[nb]
+		cx.append(cxval)
+		cv.append(np.swapaxes(dvstars,0,1)[nb])
+		cm.append(mstars[nb])
+
+	cx = np.array(cx)
+	cv = np.array(cv)
+	
+	return cx, cv, cm, nblst #closest_x, closest_v, closest_m, nghbrs

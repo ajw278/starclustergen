@@ -12,8 +12,9 @@ from multiprocessing import Process, Queue
 import scipy.interpolate as interpolate
 
 scriptdir = os.path.dirname(os.path.realpath(__file__))
-sys.path.insert(0, scriptdir)
-sys.path.insert(0, scriptdir+'../general')
+sys.path.append(scriptdir)
+sys.path.append(scriptdir+'/../general')
+
 
 #import cluster_calcs as cc
 
@@ -177,6 +178,11 @@ class nbody6_cluster:
 
 			self.save()
 
+		if load_succ:
+				print('Load successful. ')
+				if self.complete:
+						print('Simulation has been flagged as complete...')
+        
 		if load_succ and hasattr(self, 'tends'):
 			if np.sum(self.tends)>self.tend and len(self.tends)>1:
 				lg = -1
@@ -185,7 +191,6 @@ class nbody6_cluster:
 					lg -= 1
 			elif self.tends[-1]>self.tend and len(self.tends)==1:
 				self.tends[-1] = self.tend
-			
 
 			if self.tends[0]<self.tend*1e-10:
 				print('First time jump small, removing...')
@@ -199,11 +204,19 @@ class nbody6_cluster:
 				self.tends = self.tends[:-1]
 				self.dirs = self.dirs[:-1]
 				self.gasparams = self.gasparams[:-1]
-		
+			print('Recovered simulation segments with the following end times (nbody units):')
+			print(self.tends)
+			if hasattr(self, 't'):
+				if self.t[-1]>self.tends[-1]*0.99:
+					print('Last t:', self.t[-1])
+					print('Specified end time: ', self.tend)
+					print('Setting simulation to "complete"')
+					self.complete=True
 		if not hasattr(self, 'r') or force_incomp:
+			print('No positional array found, assuming simulation is incomplete...')
 			self.complete=False
-
 	
+
 	def save(self):
 		if not os.path.exists('obj'):
 			os.makedirs('obj')
@@ -438,7 +451,7 @@ class nbody6_cluster:
 		#NEW BLOCK _______________________________
 		#1 0 2 1 1 0 1 1 2 0
 		#KZ(31) com correction after energy check 38
-		indict['KZ'].append(1)
+		indict['KZ'].append(0)
 		#KZ(32) adjustment of DTADJ based on binding energy of cluster 39 +8 (=47)
 		indict['KZ'].append(0)
 		#KZ(33) block-step stats at main output
@@ -528,12 +541,11 @@ class nbody6_cluster:
 		else:
 			gpot = np.absolute(cc.stellar_potential(self.rs[stinds], self.ms[stinds]))
         
-		print(self.vs[stinds])
 		ke = cc.total_kinetic(self.vs[stinds],  self.ms[stinds])
 		Qvir = np.absolute(ke/gpot)
         
 		print('Virial Ratio:', Qvir)
-		if Qvir<1e-2:
+		if Qvir<1e-3:
 			print('Error: virial ratio too small.')
 			print('Q: {0}, GPOT: {1}, TKIN: {2}'.format(Qvir, gpot, ke))
 			sys.exit()
@@ -970,7 +982,7 @@ class nbody6_cluster:
 				else:
 					print('Input file detected.')
 					
-				RUN_STR =  NBODYDIR + "nbody6++.avx < {0} 2>&1 {1}".format(self.out+'.input', self.out+'.output')
+				RUN_STR =  NBODYEXE + " < {0} 2>&1 {1}".format(self.out+'.input', self.out+'.output')
 				if not os.path.isfile(self.out+'.output'):
 					print(RUN_STR)
 					command = cclass.Command(RUN_STR)
@@ -992,7 +1004,7 @@ class nbody6_cluster:
 							print(self.tends, ttmp)
 							print('T_end = {0}/{1}'.format(ttmp, self.tends[idir]))
 							inname = self.write_to_input(restart=0)
-							RUN_STR_NEW =  NBODYDIR + "nbody6++.avx < {0} 2>&1 {1}".format(inname+'.input', inname+'.output')
+							RUN_STR_NEW =  NBODYEXE + " < {0} 2>&1 {1}".format(inname+'.input', inname+'.output')
 							print(RUN_STR_NEW)
 							command = cclass.Command(RUN_STR_NEW)
 							command.run(timeout=20000)
@@ -1002,8 +1014,8 @@ class nbody6_cluster:
 					if (self.tends[idir]-ttmp)/self.tends[idir] > self.dtjacc and iatt>=3:
 						print('Error: Failure to run for {0} after {1} attempts...'.format(self.dirs[idir], iatt))
 						sys.exit()
-		self.read_to_npy(force=True, checkT=True)
-		os.chdir(homedir)
+			self.read_to_npy(force=True, checkT=True)
+			os.chdir(homedir)
 		
 	def evolve(self):
 		self.run_nbody()

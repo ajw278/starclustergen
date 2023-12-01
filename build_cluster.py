@@ -40,11 +40,20 @@ Gcgs = 6.6743e-8
 Msol2g = 1.988e33
 km2cm = 1e5
 km2pc = 3.241e-14
+au2cm = 1.496e13
 
 # Given parameters
 alpha = 0.018
 delta_logP = 0.7
 
+
+sv0 = 10.**0.30530517 
+p = 0.72082734
+r0 = 1.0
+
+
+r0 = deg2rad*distance
+sv0 *= mas2rad*distance*pc2cm/year2s
 
 no_hard_edge=True
 minlogP = 5.0
@@ -206,10 +215,7 @@ def generate_binary_pv(ms, bf, logP, q, e):
     P_s *= day2s
     ms_s *= Msol2g
     a_s = np.power(Gcgs*ms_s*(1.+q_s)*(P_s/2./np.pi)**2 , 1./3.)
-    
     xb_s, vb_s = gbr.gen_binpop(ms_s, q_s, a_s, e_s, centre_primary=True)
-    
-    
     xb = np.zeros((len(ms), 3))
     vb = np.zeros((len(ms), 3))
     
@@ -232,17 +238,17 @@ def add_binaries(rs, ms, bf, xb, vb, q, vs=None):
     ms_all = []
     
     for i, ib in enumerate(ibs):
-    	rs_all.append(rs.T[ib])
-    	rs_all.append(rs.T[ib] + xb[ib][:ndim])
-    	ms_all.append(ms[ib])
-    	ms_all.append(ms[ib]*q[ib])
-    	vs_all.append(vs.T[ib])
-    	vs_all.append(vs.T[ib] + vb[ib][:ndim])
+        rs_all.append(rs.T[ib])
+        rs_all.append(rs.T[ib] + xb[ib][:ndim])
+        ms_all.append(ms[ib])
+        ms_all.append(ms[ib]*q[ib])
+        vs_all.append(vs.T[ib])
+        vs_all.append(vs.T[ib] + vb[ib][:ndim])
     
     for i, iss in enumerate(inbs):
-    	rs_all.append(rs.T[iss])
-    	ms_all.append(ms[iss])
-    	vs_all.append(vs.T[iss])
+        rs_all.append(rs.T[iss])
+        ms_all.append(ms[iss])
+        vs_all.append(vs.T[iss])
     
     rs_all = np.asarray(rs_all).T
     vs_all = np.asarray(vs_all).T
@@ -464,14 +470,6 @@ if __name__=='__main__':
         seed=231
         seed =586
         vcalc=True
-
-        sv0 = 10.**0.30530517 
-        p = 0.72082734
-        r0 = 1.0
-        
-
-        r0 = deg2rad*distance
-        sv0 *= mas2rad*distance*pc2cm/year2s
         
         """rsp = np.logspace(-2, 2.0)
         plt.plot(rsp, sv0*(rsp/r0)**p/1e5)
@@ -515,13 +513,11 @@ if __name__=='__main__':
         ms = assign_masses(rs)
         bf, logP, q, e = generate_binary_population(ms)
         xb, vb = generate_binary_pv(ms, bf, logP, q, e)
-        
 
         rs_all, vs_all, ms_all = add_binaries(rs,  ms, bf, xb/pc2cm, vb, q, vs=vs)
 
         np.save('rstars_wbin.npy', rs_all)
         
-        #
         vs_all /= km2cm
         
         
@@ -537,10 +533,16 @@ if __name__=='__main__':
         ms_all = np.load('sim_ics_m.npy')
         bf, logP, q, e = np.load('sim_ics_bins.npy')
     
+   
+
     print(np.median(np.absolute(rs_all)),np.median(np.absolute(vs_all)), np.median(ms_all))
     print(rs_all.shape, vs_all.shape)
     nbins0 = int(np.sum(bf))
-    sim = nbi.nbody6_cluster(rs_all.T, vs_all.T, ms_all,  outname='clustersim', dtsnap_Myr =0.01, tend_Myr = 3.0, gasparams=None, etai=0.02, etar=0.02, etau=0.2, dtmin_Myr=1e-5, dtadj_Myr=0.01, rmin_pc=1e-4,dtjacc_Myr=0.5, load=True, ctype='smooth', force_incomp = False, rtrunc=50.0, nbin0=nbins0)
+
+    sim = nbi.nbody6_cluster(rs_all.T, vs_all.T, ms_all,  outname='clustersim', dtsnap_Myr =0.01, \
+                tend_Myr = 3.0, gasparams=None, etai=0.02, etar=0.02, etau=0.2, dtmin_Myr=1e-5, \
+                dtadj_Myr=0.01, rmin_pc=1e-4,dtjacc_Myr=0.5, load=False, ctype='smooth', force_incomp = False, \
+                    rtrunc=50.0, nbin0=nbins0)
     sim.evolve()
     cp.plot_3dpos(sim)
     #sim = rb.setupSimulation(rs_all, vs_all*1e5*1e6*year2s/pc2cm, ms_all, units=('Myr', 'pc', 'Msun'))
