@@ -57,7 +57,7 @@ sv0 *= mas2rad*distance*pc2cm/year2s
 
 no_hard_edge=True
 minlogP = 3.0
-maxlogP = 9.0
+maxlogP = 10.0
 
 # Define the binary fraction functions
 def f_logP_lt_1(M1):
@@ -100,7 +100,7 @@ def get_gammavals(logP):
     return 0.4, -0.7
 
 def get_flogP_func(M1):
-    logPsp = np.linspace(0.2, 9., 100)
+    logPsp = np.linspace(1.0, 10., 100)
     flogP = np.asarray([binary_fraction(logP, M1=M1) for logP in logPsp])
     return interpolate.interp1d(logPsp, flogP, bounds_error=False, fill_value=0.0)
 
@@ -193,7 +193,7 @@ def generate_binary_population(mstars):
             q_i = icdf_q(u3)
             
             #Eccentricity randomly distributed.. appears to be! 
-            e_companions[i] = 0.0 # np.random.uniform()*
+            e_companions[i] = 0.6 # np.random.uniform()*
 
             # Determine if a binary is present based on the probability
             binary_flags[i] = 1
@@ -461,10 +461,11 @@ def select_istars(rstars, rmax, sharpness=10.0):
 if __name__=='__main__':
     
     if not os.path.isfile('sim_ics_r.npy') or not os.path.isfile('sim_ics_v.npy') or not os.path.isfile('sim_ics_m.npy'):
-        binsep = distance*deg2rad*(10.**-1.5)/1.5
-        Lbox  = 60.0
+        binsep = distance*deg2rad*(10.**-2.0)/1.5
+        Lbox  = 20.0
         lNbox_est = math.log2(Lbox/binsep)
         Nbox = int(2.**(int(lNbox_est)))
+
         print(Nbox)
         ndim=3
         seed=231
@@ -486,14 +487,14 @@ if __name__=='__main__':
             mu = np.zeros(2)
         else:
             #Parameters that work for 3D
-            Pk_norm = 200.0
-            Pk_index= -1.3
+            Pk_norm = 300.0
+            Pk_index= -1.66
             covmat = np.eye(3)
             mu = np.zeros(3)
 
         print('Nbox:', Nbox)
         if not os.path.isfile('rgbox.npy'):
-            rs = gf.build_cluster(Nstars=10000, Nbox=Nbox,  Lbox=Lbox, Rcl = 30.0, \
+            rs = gf.build_cluster(Nstars=10000, Nbox=Nbox,  Lbox=Lbox, Rcl = 15.0, \
                      sharp_edge= 10.0, Pk_norm=Pk_norm, Pk_index=Pk_index, normed_covmat=covmat, mu=mu, seed=seed)
             np.save('rgbox', rs)
         else:
@@ -501,10 +502,10 @@ if __name__=='__main__':
 
         istars = np.arange(rs.shape[1]) 
         istars = select_istars(rs, 30.0, sharpness=10.0)
-        istars = np.random.choice(istars, size=500, replace=False)
+        istars = np.random.choice(istars, size=700, replace=False)
         print(rs.shape)
         rs = rs[:, istars]
-        
+
         print('Vcalc walk...')
         vs = vgf.velocity_gen(rs, r0=r0, p=p, sv0=sv0)
 
@@ -548,8 +549,8 @@ if __name__=='__main__':
     nbins0 = int(np.sum(bf))
 
     sim = nbi.nbody6_cluster(rs_all.T, vs_all.T, ms_all,  outname='clustersim', dtsnap_Myr =0.01, \
-                tend_Myr = 3.0, gasparams=None, etai=0.05, etar=0.01, etau=0.2, dtmin_Myr=1e-6, \
-                rmin_pc=1e-2,dtjacc_Myr=0.05, load=False, ctype='smooth', force_incomp = False, \
+                tend_Myr = 3.0, gasparams=None, etai=0.05, etar=0.05, etau=0.2, dtmin_Myr=1e-8, \
+                rmin_pc=1e-4,dtjacc_Myr=0.05, load=False, ctype='smooth', force_incomp = False, \
                     rtrunc=50.0, nbin0=nbins0)
     sim.evolve()
     cp.plot_3dpos(sim)

@@ -88,7 +88,7 @@ def weighted_random_choice(arr, size=10):
     # Choose a random index based on the calculated weights
     #We do not replace each cell. This ensures that the normalisation of the field
     #is not so important as long as the grid cells are sufficiently small
-    index = np.random.choice(len(flattened_arr), p=weights, size=size, replace=False)
+    index = np.random.choice(len(flattened_arr), p=weights, size=size, replace=True)
     
     
     # Convert the 1D index back to N-D indices

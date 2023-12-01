@@ -433,7 +433,7 @@ class nbody6_cluster:
 		indict['KZ'].append(2)
 			
 		#KZ(23) - Removal of escapers 30
-		indict['KZ'].append(2)
+		indict['KZ'].append(0)
 		#KS(24) Initial conditions for subsystems 31
 		indict['KZ'].append(0)
 		#KS(25) Vel kicks for wds 32
@@ -511,11 +511,11 @@ class nbody6_cluster:
 		#binding energy per unit mass fror hard binary
 		indict['ECLOSE'] = 1.0
 		#Gmin relative two-body pert for unperturbed motion
-		indict['GMIN'] = 1e-6
+		indict['GMIN'] = 1e-7
 		#Secondary termination param for soft binaries
 		indict['GMAX'] = 0.01
 		#Max time-step 
-		indict['SMAX'] = 0.125
+		indict['SMAX'] = 1.0
 		#2.35 20.0 0.08 0 0 0.001 0 1.0
 		
 		#Power-law index for initial mass function, routine data.F
@@ -694,6 +694,8 @@ class nbody6_cluster:
 
 
 				times[itime] = h2[1]
+				print(h2)
+				print(times[itime], self.units_astro[2])
 				print('{0}: t={1} Myr'.format(fname, times[itime]*self.units_astro[2]))
 				for iitime in range(itime, len(rs_all)):
 					rs_all[iitime][NAME] =X
@@ -797,6 +799,7 @@ class nbody6_cluster:
 					sys.exit()
 
 			if checkT:
+				print(times, self.tends[self.idir])
 				itmax = np.argmin(np.absolute(times-self.tends[self.idir]))
 				print('Final time in sim section: {0}/{1}'.format(times[itmax], self.tends[self.idir]))
 				if hasattr(self, 'dtjacc'):
@@ -1022,7 +1025,6 @@ class nbody6_cluster:
 		
 	def evolve(self):
 		self.run_nbody()
-		
 		self.combine()
 
 		

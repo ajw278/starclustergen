@@ -43,7 +43,7 @@ def get_nbody_units(ms_Msol, rs_pc, vs_kms):
 	potG1 = -3.*np.pi*np.sum(ms)**2 / (np.median(rs)*1.3) /32.0
 	pot = potG1*G_si
 	
-	r_units = G_si*np.sum(ms)**2 / pot
+	r_units = G_si*np.sum(ms)**2 / np.absolute(pot)
 
 	
 	#Now compute velocity units to give E=1/4
