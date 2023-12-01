@@ -468,8 +468,8 @@ if __name__=='__main__':
 
         print(Nbox)
         ndim=3
-        seed=231
-        seed =586
+        seed=7483
+        #seed =586
         vcalc=True
         
         """rsp = np.logspace(-2, 2.0)
@@ -494,7 +494,7 @@ if __name__=='__main__':
 
         print('Nbox:', Nbox)
         if not os.path.isfile('rgbox.npy'):
-            rs = gf.build_cluster(Nstars=10000, Nbox=Nbox,  Lbox=Lbox, Rcl = 15.0, \
+            rs = gf.build_cluster(Nstars=10000, Nbox=Nbox,  Lbox=Lbox, Rcl = 10.0, \
                      sharp_edge= 10.0, Pk_norm=Pk_norm, Pk_index=Pk_index, normed_covmat=covmat, mu=mu, seed=seed)
             np.save('rgbox', rs)
         else:
