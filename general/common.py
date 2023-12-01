@@ -36,7 +36,7 @@ if os.path.isfile(exepath):
         lines = f.readlines()
         for line in lines:
             if len(line)>2:
-                NBODYEXE = line
+                NBODYEXE = line.strip('\n')
                 break
 if NBODYEXE is None:
     print('No file (%s) with location of Nbody6++ found...'%exepath)

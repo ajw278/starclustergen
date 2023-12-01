@@ -56,7 +56,7 @@ r0 = deg2rad*distance
 sv0 *= mas2rad*distance*pc2cm/year2s
 
 no_hard_edge=True
-minlogP = 5.0
+minlogP = 4.0
 maxlogP = 8.0
 
 # Define the binary fraction functions
@@ -540,8 +540,8 @@ if __name__=='__main__':
     nbins0 = int(np.sum(bf))
 
     sim = nbi.nbody6_cluster(rs_all.T, vs_all.T, ms_all,  outname='clustersim', dtsnap_Myr =0.01, \
-                tend_Myr = 3.0, gasparams=None, etai=0.02, etar=0.02, etau=0.2, dtmin_Myr=1e-5, \
-                dtadj_Myr=0.01, rmin_pc=1e-4,dtjacc_Myr=0.5, load=False, ctype='smooth', force_incomp = False, \
+                tend_Myr = 3.0, gasparams=None, etai=0.02, etar=0.02, etau=0.2, dtmin_Myr=1e-3, \
+                dtadj_Myr=0.1, rmin_pc=1e-3,dtjacc_Myr=0.5, load=False, ctype='smooth', force_incomp = False, \
                     rtrunc=50.0, nbin0=nbins0)
     sim.evolve()
     cp.plot_3dpos(sim)

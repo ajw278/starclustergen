@@ -53,7 +53,7 @@ class nbody6_cluster:
 			rstars, vstars, mstars, runit, tunit, munit = cu.get_nbody_units(mstars_msol, rstars_pc, vstars_kms)
 			
 			
-			self.dtjacc = 1.0 #dtjacc_Myr/tunit/s2myr
+			self.dtjacc = dtjacc_Myr/tunit/s2myr
 			self.tend = tend_Myr/tunit/s2myr
 			print('Tend:', self.tend, tend_Myr)
 			self.rmin = rmin_pc/runit/m2pc
@@ -61,7 +61,7 @@ class nbody6_cluster:
 			self.dt = dtsnap_Myr/tunit/s2myr
 			print('dt:', self.dt, self.dtmin)
 			self.dtopt = self.dt
-			self.dtadj = 1.0 #dtjacc_Myr/tunit/s2myr
+			self.dtadj = dtjacc_Myr/tunit/s2myr
 
 	
 			self.units_SI = np.array([munit, runit, tunit])
@@ -545,7 +545,7 @@ class nbody6_cluster:
 		Qvir = np.absolute(ke/gpot)
         
 		print('Virial Ratio:', Qvir)
-		if Qvir<1e-3:
+		if Qvir<1e-4:
 			print('Error: virial ratio too small.')
 			print('Q: {0}, GPOT: {1}, TKIN: {2}'.format(Qvir, gpot, ke))
 			sys.exit()
