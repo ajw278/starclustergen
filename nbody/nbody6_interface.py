@@ -29,7 +29,7 @@ import saveload
 #mpl_cols = ['k','b','g','r','orange', 'c', 'm', 'y']
 
 class nbody6_cluster:
-	def __init__(self, rstars_pc, vstars_kms, mstars_msol, outname='clustersim', dtsnap_Myr =1e-1, tend_Myr = 1.0, assoc=None, gasparams=None, etai=0.005, etar=0.01, etau=0.2, dtmin_Myr=5e-7, dtadj_Myr=1.0, rmin_pc=1e-6, dtjacc_Myr=0.05, load=False, ctype='clumpy', force_incomp = False, starinds = None, rtrunc=50.0):
+	def __init__(self, rstars_pc, vstars_kms, mstars_msol, outname='clustersim', dtsnap_Myr =1e-1, tend_Myr = 1.0, assoc=None, gasparams=None, etai=0.02, etar=0.02, etau=0.2, dtmin_Myr=5e-7, dtadj_Myr=1.0, rmin_pc=1e-6, dtjacc_Myr=0.05, load=False, ctype='clumpy', force_incomp = False, starinds = None, rtrunc=50.0, nbin0=0):
 		self.out = outname
 		self.idir = 0
 		self.ctype = ctype
@@ -47,6 +47,7 @@ class nbody6_cluster:
 			self.etau = etau
 			print('Assigning initial conditions...')
 			self.n= len(mstars_msol)
+			self.nbin0 = nbin0
 			
 			rstars, vstars, mstars, runit, tunit, munit = cu.get_nbody_units(mstars_msol, rstars_pc, vstars_kms)
 			
@@ -59,7 +60,7 @@ class nbody6_cluster:
 			self.dt = dtsnap_Myr/tunit/s2myr
 			print('dt:', self.dt, self.dtmin)
 			self.dtopt = self.dt
-			self.dtadj = dtjacc_Myr/tunit/s2myr
+			self.dtadj = 1.0 #dtjacc_Myr/tunit/s2myr
 
 	
 			self.units_SI = np.array([munit, runit, tunit])
@@ -307,7 +308,7 @@ class nbody6_cluster:
 			
 		indict['TCOMP'] = 1000000.0 #2
 		#End time in Myr - don't use, use nbody units instead (TCRIT)
-		indict['TCRITP'] = self.tend/self.units_astro[2] #3
+		indict['TCRITP'] = self.tend*self.units_astro[2] #3
 		
 		if type(self.starinds)==type(None):
 			indict['N'] = int(self.n) #4
@@ -315,7 +316,7 @@ class nbody6_cluster:
 			indict['N'] = len(self.starinds[self.idir])
 		indict['NFIX'] = 1 #5
 		indict['NCRIT'] = -1 #6
-		indict['NNBOPT'] = int(min(max(2.*(float(indict['N'])/100.)**0.5, 20.), 300.)) #7
+		indict['NNBOPT'] = int(min(max(2.*(float(indict['N'])/100.)**0.5, 10.), 300.)) #7
 		indict['NRUN'] = 1 #8
 		indict['NCOMM'] = 10
 
@@ -329,19 +330,19 @@ class nbody6_cluster:
 		bigR = np.median(rmags)
 		bigN = len(np.where(rmags<bigR)[0])
 		rho = float(bigN/(4.*np.pi*bigR*bigR*bigR/3.))
-		rguess = 0.1*float(indict['NNBOPT'])*np.power(3./(4.*np.pi*rho),0.3333)
+		rguess = 0.05*float(indict['NNBOPT'])*np.power(3./(4.*np.pi*rho),0.3333)
 		print('Rguess:', rguess)
 
 		indict['RS0'] =  rguess #rguess
 		
 		
-		indict['RBAR'] = self.units_astro[2]
+		indict['RBAR'] = self.units_astro[1]
 		indict['ZMBAR'] = np.mean(self.ms)*self.units_astro[0]
 		#TCRIT - termination time in nbody units	6
 		indict['TCRIT'] = self.tends[self.idir]
 		
 		print('Length scale [pc]:',indict['RBAR'])
-	
+		print('Units:', self.units_astro)
 		#QE - energy tolerance	7
 		if type(self.gasparams[self.idir])!=type(None):
 			indict['QE'] = 5.0E-02
@@ -349,9 +350,11 @@ class nbody6_cluster:
 			indict['QE'] = 1.0E-03
 
 
+		#NEW BLOCK _______________________________
+		#0 1 1 0 1 0 4 0 0 2
 		indict['KZ'] = []
 		#KZ(1) - save file to fort.1 (1 - end of run or when dummy file STOP, 2- every 100*NMAX steps 8
-		indict['KZ'].append(1) 
+		indict['KZ'].append(0) 
 		#KZ(2) - save file to fort.2 (output time 1, output time and restart of energy error>5*QE) 9
 		indict['KZ'].append(1)
 		#KZ(3) - save basic data to file conf.3 at output time 10
@@ -363,22 +366,22 @@ class nbody6_cluster:
 		#KZ(6) - bodief.f output significant binaries at main output 13
 		indict['KZ'].append(0)
 		#KZ(7) - determine Lag. radii avaerage mass, particle counters, average velocity, dispersion and rotational, within Lagrangian radii 14
-		indict['KZ'].append(1)
-		#KZ(8) - Primordial binaries initializations and output 15
 		indict['KZ'].append(0)
+		#KZ(8) - Primordial binaries initializations and output 15
+		indict['KZ'].append(2)
 		#KZ(9) - binary diagnositics 16
 		indict['KZ'].append(0)
 		#KZ(10) - K.S. regularizations diagnostics 17
 		indict['KZ'].append(2)
 
 
-		#NOTE: Currently has tidal field
-
+		#NEW BLOCK _______________________________
+		#0 1 0 1 2 0 0 0 3 6
 
 		#supressed 18
 		indict['KZ'].append(0)
 		#KZ(12) - >0 HR diagnositics of evolving stars with output time interval DTPLOT --> -1 used if KX(19)=0 19
-		indict['KZ'].append(1)
+		indict['KZ'].append(0)
 		#KZ(13) - interstellar clouds 20
 		indict['KZ'].append(0)	
 		#KZ(14) - external tidal force 21
@@ -405,8 +408,9 @@ class nbody6_cluster:
 		#KZ(20) - IMF, needs KZ(22)=0 or 9 27 +8 (negative for preserved RBAR, ZMBAR)
 		indict['KZ'].append(-1)
 
-
-
+		
+		#NEW BLOCK _______________________________
+		#1 2 2 0 0 2 0 0 0 2
 		#KZ(21) - extra diagnostics information at main output every DELTAT 28
 		indict['KZ'].append(1)
 		#KZ(22) -  INITIALIZATION OF BASIC PARTICLE DATA, MASS POSITION VELOCITY
@@ -415,13 +419,13 @@ class nbody6_cluster:
 		indict['KZ'].append(2)
 			
 		#KZ(23) - Removal of escapers 30
-		indict['KZ'].append(0)
+		indict['KZ'].append(2)
 		#KS(24) Initial conditions for subsystems 31
 		indict['KZ'].append(0)
 		#KS(25) Vel kicks for wds 32
 		indict['KZ'].append(0)
 		#KS(26) Slow-down of two-body motion, increase the regularization integration efficiency = 3: Rectify to get better energy conservation 33 +8
-		indict['KZ'].append(3)
+		indict['KZ'].append(2)
 		#KZ(27) Two-body tidal circularization 34
 		indict['KZ'].append(0)
 		#KZ(28) Magnetic braking and gravitational radiation for NS or BH binaries 35
@@ -429,10 +433,12 @@ class nbody6_cluster:
 		#KZ(29) suppressed (boundary reflection) 36
 		indict['KZ'].append(0)
 		#KZ(30) hierarchical reg if not 37
-		indict['KZ'].append(0)
+		indict['KZ'].append(2)
 
+		#NEW BLOCK _______________________________
+		#1 0 2 1 1 0 1 1 2 0
 		#KZ(31) com correction after energy check 38
-		indict['KZ'].append(0)
+		indict['KZ'].append(1)
 		#KZ(32) adjustment of DTADJ based on binding energy of cluster 39 +8 (=47)
 		indict['KZ'].append(0)
 		#KZ(33) block-step stats at main output
@@ -444,16 +450,16 @@ class nbody6_cluster:
 		#KZ(36) (supressed) step reduction for hierarchical
 		indict['KZ'].append(0)
 		#KZ(37) nbr list additions #was 1
-		indict['KZ'].append(0)
+		indict['KZ'].append(1)
 		#KZ(38) nbr force poly corrections during reg block step calc #was 1
-		indict['KZ'].append(0)
+		indict['KZ'].append(1)
 		#KZ(39) nbr radius adjustment method # was 3
 		#Use 0 if system has unique density centre and smooth density profgile
 		indict['KZ'].append(0)
 		if hasattr(self, 'ctype'):
 			if self.ctype =='clumpy':
-				indict['KZ'][-1]=3
-
+				indict['KZ'][-1]=2
+		#0 0 0 0 0 2 -3 0 0 0
 		#KZ(40) = 0: For the initialization of particle time steps, use only force and its first derivative, to estimate. 
 		#This is very efficent. > 0: Use Fploy2 (second and third order force derivatives calculation) to estimate the initial time steps. #was 1
 		indict['KZ'].append(0)
@@ -480,22 +486,22 @@ class nbody6_cluster:
 		indict['KZ'].append(0)
 
 
-		#4.0E-06 5E-4 0.1 1.0 1.0E-06 0.01 1.0
-
+		#1.0E-5 2E-4 0.1 1.0 1.0E-06 0.01 0.125
+		
 		#DTMIN tstep criterion for reg search 
-		indict['DTMIN'] = self.dtmin
+		indict['DTMIN'] = 1.0e-5 #self.dtmin
 		#Distance creiterion for reg search
-		indict['RMIN'] = self.rmin
+		indict['RMIN'] = 2.0e-4 #self.rmin
 		#Reg tstep param (2*pi/ETAU steps/orbit)
-		indict['ETAU'] = self.etau
+		indict['ETAU'] = 0.1 # self.etau
 		#binding energy per unit mass fror hard binary
 		indict['ECLOSE'] = 1.0
 		#Gmin relative two-body pert for unperturbed motion
 		indict['GMIN'] = 1e-6
 		#Secondary termination param for soft binaries
-		indict['GMAX'] = 0.001
+		indict['GMAX'] = 0.01
 		#Max time-step 
-		indict['SMAX'] = 1.0
+		indict['SMAX'] = 0.125
 		#2.35 20.0 0.08 0 0 0.001 0 1.0
 		
 		#Power-law index for initial mass function, routine data.F
@@ -505,7 +511,7 @@ class nbody6_cluster:
 		#Minimum particle mass before scaling
 		indict['BODYN'] = 0.08
 		# Number primordial binaries
-		indict['NBIN0'] = 0	
+		indict['NBIN0'] = self.nbin0	
 		#Number of prim hierarchichal 
 		indict['NHI0'] = 0
 		#Metal abundance
@@ -673,7 +679,7 @@ class nbody6_cluster:
 
 
 				times[itime] = h2[1]
-				print('{0}: t={1} Myr'.format(fname, times[itime]))
+				print('{0}: t={1} Myr'.format(fname, times[itime]*self.units_astro[2]))
 				for iitime in range(itime, len(rs_all)):
 					rs_all[iitime][NAME] =X
 					vs_all[iitime][NAME] =V

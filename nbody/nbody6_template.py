@@ -118,9 +118,9 @@ def infile_string(indict, masses, pos, vel,  mpi=False):
 		sys.exit()"""
 		
 
-	if indict['KZ'][7] != 0:
-		print('Error: Not implemented for binary params.')
-		sys.exit()
+	#if indict['KZ'][7] != 0:
+	#	print('Error: Not implemented for binary params.')
+	#	sys.exit()
 
 	if indict['KZ'][17] != 0:
 		print('Error: Not implemented for hierarchical params.')

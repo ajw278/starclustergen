@@ -47,8 +47,8 @@ delta_logP = 0.7
 
 
 no_hard_edge=True
-minlogP = 7.0
-maxlogP = 10.0
+minlogP = 5.0
+maxlogP = 8.0
 
 # Define the binary fraction functions
 def f_logP_lt_1(M1):
@@ -224,21 +224,31 @@ def add_binaries(rs, ms, bf, xb, vb, q, vs=None):
     rs_b = np.zeros((nbins, ndim))
     ms_b = np.zeros(nbins)
     ibs = np.where(bf==1)[0]
+    inbs = np.where(bf==0)[0]
+    
+    
+    rs_all = []
+    vs_all = []
+    ms_all = []
     
     for i, ib in enumerate(ibs):
-        rs_b[i] = rs.T[ib] + xb[ib][:ndim]
-        ms_b[i] = ms[ib]*q[ib]
+    	rs_all.append(rs.T[ib])
+    	rs_all.append(rs.T[ib] + xb[ib][:ndim])
+    	ms_all.append(ms[ib])
+    	ms_all.append(ms[ib]*q[ib])
+    	vs_all.append(vs.T[ib])
+    	vs_all.append(vs.T[ib] + vb[ib][:ndim])
     
-    if not vs is None:
-        vs_b = np.zeros(rs_b.shape)
-        
-        for i, ib in enumerate(ibs):
-            vs_b[i] = vs.T[ib] + vb[ib][:ndim]
-        vs_all = np.append(vs, vs_b.T, axis=1)
-    else:
-        vs_all = None
+    for i, iss in enumerate(inbs):
+    	rs_all.append(rs.T[iss])
+    	ms_all.append(ms[iss])
+    	vs_all.append(vs.T[iss])
     
-    return np.append(rs, rs_b.T, axis=1), vs_all, np.append(ms, ms_b, axis=0)
+    rs_all = np.asarray(rs_all).T
+    vs_all = np.asarray(vs_all).T
+    ms_all = np.asarray(ms_all)
+    
+    return rs_all, vs_all, ms_all
 
 def plot_pairs(rstars_phys):
     rstars = rstars_phys/(distance*deg2rad)
@@ -381,7 +391,7 @@ def plot_dvNN(rs, vs):
     nearest_neighbor_distances = distances[np.arange(num_stars), nearest_neighbors]
     
 
-    bins = np.logspace(-1.5, 1.5)
+    bins = np.logspace(-4.0, 1.5)
     plt.hist(distances.flatten(), bins=bins, density=True, histtype='step')
     plt.hist( nearest_neighbor_distances, bins=bins,density=True, histtype='step')
     plt.yscale('log')
@@ -505,6 +515,7 @@ if __name__=='__main__':
         ms = assign_masses(rs)
         bf, logP, q, e = generate_binary_population(ms)
         xb, vb = generate_binary_pv(ms, bf, logP, q, e)
+        
 
         rs_all, vs_all, ms_all = add_binaries(rs,  ms, bf, xb/pc2cm, vb, q, vs=vs)
 
@@ -513,6 +524,9 @@ if __name__=='__main__':
         #
         vs_all /= km2cm
         
+        
+        plot_dvNN(rs_all, vs_all)
+        np.save('sim_ics_bins', np.array([bf, logP, q, e]))
         np.save('sim_ics_r', rs_all)
         np.save('sim_ics_v', vs_all)
         np.save('sim_ics_m', ms_all)
@@ -521,13 +535,13 @@ if __name__=='__main__':
         rs_all = np.load('sim_ics_r.npy')
         vs_all = np.load('sim_ics_v.npy')
         ms_all = np.load('sim_ics_m.npy')
+        bf, logP, q, e = np.load('sim_ics_bins.npy')
     
     print(np.median(np.absolute(rs_all)),np.median(np.absolute(vs_all)), np.median(ms_all))
     print(rs_all.shape, vs_all.shape)
-    
-    sim = nbi.nbody6_cluster(rs_all.T, vs_all.T, ms_all,  outname='clustersim', dtsnap_Myr =1e-2, tend_Myr = 10.0, gasparams=None, etai=0.005, etar=0.01, etau=0.2, dtmin_Myr=1e-6, dtadj_Myr=0.5, rmin_pc=1e-4,dtjacc_Myr=0.5, load=True, ctype='smooth', force_incomp = False, rtrunc=50.0)
+    nbins0 = int(np.sum(bf))
+    sim = nbi.nbody6_cluster(rs_all.T, vs_all.T, ms_all,  outname='clustersim', dtsnap_Myr =0.01, tend_Myr = 3.0, gasparams=None, etai=0.02, etar=0.02, etau=0.2, dtmin_Myr=1e-5, dtadj_Myr=0.01, rmin_pc=1e-4,dtjacc_Myr=0.5, load=True, ctype='smooth', force_incomp = False, rtrunc=50.0, nbin0=nbins0)
     sim.evolve()
     cp.plot_3dpos(sim)
-    #sim = rb.setupSimulation(rs_all, vs_all, ms_all, units=('Myr', 'pc', 'Msun'))
-    
+    #sim = rb.setupSimulation(rs_all, vs_all*1e5*1e6*year2s/pc2cm, ms_all, units=('Myr', 'pc', 'Msun'))
     #sim.integrate(3.0)

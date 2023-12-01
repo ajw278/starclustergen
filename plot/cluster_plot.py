@@ -53,6 +53,7 @@ def resample_times(times, dt):
 
     # Find the indices in the original times array corresponding to the resampled times
     inc_inds = np.searchsorted(times, resampled_times)
+    print(inc_inds, len(times))
 
     return inc_inds
 
@@ -98,8 +99,8 @@ def plot_3dpos(simulation, dim=None, save=True, rlim=20.0):
 	t*=tunits
 	
 	incinds = resample_times(t, 0.05)
-	r = r[incinds]
-	t = t[incinds]
+	r_ = r[incinds]
+	t_ = t[incinds]
 	
 	create_3d_stars_animation(r, t,filename='stars_animation.mp4')
 	
