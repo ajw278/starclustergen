@@ -56,7 +56,7 @@ r0 = deg2rad*distance
 sv0 *= mas2rad*distance*pc2cm/year2s
 
 no_hard_edge=True
-minlogP = 4.0
+minlogP = 7.99
 maxlogP = 8.0
 
 # Define the binary fraction functions
@@ -193,7 +193,7 @@ def generate_binary_population(mstars):
             q_i = icdf_q(u3)
             
             #Eccentricity randomly distributed.. appears to be! 
-            e_companions[i] = np.random.uniform()
+            e_companions[i] = 0.0 # np.random.uniform()*
 
             # Determine if a binary is present based on the probability
             binary_flags[i] = 1
@@ -535,13 +535,17 @@ if __name__=='__main__':
     
    
 
+    irand = np.random.choice(np.arange(len(rs_all.T)), size=200, replace=False)
+    nbins0= 0
+    print(irand)
+
     print(np.median(np.absolute(rs_all)),np.median(np.absolute(vs_all)), np.median(ms_all))
     print(rs_all.shape, vs_all.shape)
     nbins0 = int(np.sum(bf))
 
-    sim = nbi.nbody6_cluster(rs_all.T, vs_all.T, ms_all,  outname='clustersim', dtsnap_Myr =0.01, \
-                tend_Myr = 3.0, gasparams=None, etai=0.02, etar=0.02, etau=0.2, dtmin_Myr=1e-3, \
-                dtadj_Myr=0.1, rmin_pc=1e-3,dtjacc_Myr=0.5, load=False, ctype='smooth', force_incomp = False, \
+    sim = nbi.nbody6_cluster(rs_all.T, vs_all.T, ms_all,  outname='clustersim', dtsnap_Myr =1.0, \
+                tend_Myr = 3.0, gasparams=None, etai=0.05, etar=0.01, etau=0.2, dtmin_Myr=1e-6, \
+                dtadj_Myr=0.1, rmin_pc=1e-4,dtjacc_Myr=0.05, load=False, ctype='smooth', force_incomp = False, \
                     rtrunc=50.0, nbin0=nbins0)
     sim.evolve()
     cp.plot_3dpos(sim)

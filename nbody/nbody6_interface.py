@@ -53,7 +53,7 @@ class nbody6_cluster:
 			rstars, vstars, mstars, runit, tunit, munit = cu.get_nbody_units(mstars_msol, rstars_pc, vstars_kms)
 			
 			
-			self.dtjacc = dtjacc_Myr/tunit/s2myr
+			self.dtjacc = 1.0 #dtjacc_Myr/tunit/s2myr
 			self.tend = tend_Myr/tunit/s2myr
 			print('Tend:', self.tend, tend_Myr)
 			self.rmin = rmin_pc/runit/m2pc
@@ -360,7 +360,7 @@ class nbody6_cluster:
 		if type(self.gasparams[self.idir])!=type(None):
 			indict['QE'] = 5.0E-02
 		else:
-			indict['QE'] = 1.0E-03
+			indict['QE'] = 5.0E-02
 
 
 		#NEW BLOCK _______________________________
@@ -377,17 +377,18 @@ class nbody6_cluster:
 		#KZ(5) - initial conditions of the particle distribution if KZ(22) = 0 12
 		indict['KZ'].append(0)
 		#KZ(6) - bodief.f output significant binaries at main output 13
-		indict['KZ'].append(0)
+		indict['KZ'].append(1)
 		#KZ(7) - determine Lag. radii avaerage mass, particle counters, average velocity, dispersion and rotational, within Lagrangian radii 14
 		indict['KZ'].append(0)
 		#KZ(8) - Primordial binaries initializations and output 15
 		indict['KZ'].append(2)
 		#KZ(9) - binary diagnositics 16
-		indict['KZ'].append(0)
+		indict['KZ'].append(1)
 		#KZ(10) - K.S. regularizations diagnostics 17
 		indict['KZ'].append(2)
 
 
+		#0 1 0 0 2 0 0 3 3 6
 		#NEW BLOCK _______________________________
 		#0 1 0 1 2 0 0 0 3 6
 
@@ -399,7 +400,7 @@ class nbody6_cluster:
 		indict['KZ'].append(0)	
 		#KZ(14) - external tidal force 21
 		if type(self.gasparams[self.idir])==type(None):
-			indict['KZ'].append(1)
+			indict['KZ'].append(0)
 		else:
 		
 			indict['KZ'].append(4)
@@ -502,9 +503,9 @@ class nbody6_cluster:
 		#1.0E-5 2E-4 0.1 1.0 1.0E-06 0.01 0.125
 		
 		#DTMIN tstep criterion for reg search 
-		indict['DTMIN'] = 1.0e-5 #self.dtmin
+		indict['DTMIN'] = self.dtmin #self.dtmin
 		#Distance creiterion for reg search
-		indict['RMIN'] = 2.0e-4 #self.rmin
+		indict['RMIN'] = self.rmin
 		#Reg tstep param (2*pi/ETAU steps/orbit)
 		indict['ETAU'] = 0.1 # self.etau
 		#binding energy per unit mass fror hard binary
