@@ -28,7 +28,6 @@ class setupSimulation():
 
 
             self.n_encounter = 0
-
             self.sim = rebound.Simulation()
             self.sim.units = self.units
             self.sim.integrator = "ias15" # IAS15 is the default integrator
