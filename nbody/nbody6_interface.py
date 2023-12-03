@@ -370,9 +370,9 @@ class nbody6_cluster:
 		#0 1 1 0 1 0 4 0 0 2
 		indict['KZ'] = []
 		#KZ(1) - save file to fort.1 (1 - end of run or when dummy file STOP, 2- every 100*NMAX steps 8
-		indict['KZ'].append(0) 
+		indict['KZ'].append(1) 
 		#KZ(2) - save file to fort.2 (output time 1, output time and restart of energy error>5*QE) 9
-		indict['KZ'].append(1)
+		indict['KZ'].append(2)
 		#KZ(3) - save basic data to file conf.3 at output time 10
 		indict['KZ'].append(1)
 		#KZ(4) - supress (?) binary diagnostics on bdat.4 11
@@ -417,7 +417,7 @@ class nbody6_cluster:
 		#KZ(16) -Auto-adjustment regularisation parameters 23
 		indict['KZ'].append(1)
 		#KZ(17) - auto asjust ETAI etc. 24
-		indict['KZ'].append(0)
+		indict['KZ'].append(1)
 		#KZ(18) - hierarchical systems 25 
 		indict['KZ'].append(0)
 		#KZ(19) - stellar evolution mass loss 26
@@ -472,10 +472,10 @@ class nbody6_cluster:
 		indict['KZ'].append(1)
 		#KZ(39) nbr radius adjustment method # was 3
 		#Use 0 if system has unique density centre and smooth density profgile
-		indict['KZ'].append(0)
+		indict['KZ'].append(1)
 		if hasattr(self, 'ctype'):
 			if self.ctype =='clumpy':
-				indict['KZ'][-1]=2
+				indict['KZ'][-1]=1
 		#0 0 0 0 0 2 -3 0 0 0
 		#KZ(40) = 0: For the initialization of particle time steps, use only force and its first derivative, to estimate. 
 		#This is very efficent. > 0: Use Fploy2 (second and third order force derivatives calculation) to estimate the initial time steps. #was 1
@@ -991,7 +991,8 @@ class nbody6_cluster:
 					print('Input file detected.')
 					
 				RUN_STR =  NBODYEXE + " < {0} 2>&1 {1}".format(self.out+'.input', self.out+'.output')
-				if not os.path.isfile(self.out+'.output'):
+				outfiles= glob.glob('conf.3_'+str(iconf)+'.*')
+				if len(outfiles)==0:
 					print(RUN_STR)
 					command = cclass.Command(RUN_STR)
 					command.run(timeout=20000)
