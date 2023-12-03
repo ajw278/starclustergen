@@ -118,7 +118,7 @@ def plot_dvNN(rs, vs, **svparams):
     plt.show()
     
 
-def velocity_gen(rstars, sigv=0.5e5, **svparams):
+def velocity_gen(rstars, sigv=1.5e5, **svparams):
     
     positions = rstars.T
     
