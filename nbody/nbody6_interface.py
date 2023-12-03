@@ -991,7 +991,8 @@ class nbody6_cluster:
 					print('Input file detected.')
 					
 				RUN_STR =  NBODYEXE + " < {0} 2>&1 {1}".format(self.out+'.input', self.out+'.output')
-				outfiles= glob.glob('conf.3_'+str(iconf)+'.*')
+				outfiles = glob.glob('conf.3_0.*')
+
 				if len(outfiles)==0:
 					print(RUN_STR)
 					command = cclass.Command(RUN_STR)
@@ -1002,7 +1003,8 @@ class nbody6_cluster:
 					ttmp = 0.0
 					iatt=0
 					exit_flag=False
-					while (self.tends[idir]-ttmp)/self.tends[idir] > self.dtjacc and iatt<3:			
+					while (self.tends[idir]-ttmp)/self.tends[idir] > self.dtjacc and iatt<3:
+						print(iatt)			
 						rtmp, vtmp, mtmp, ttmp, tunits, munits, runits = self.read_to_npy(force=False, checkT=False)
 
 						if (self.tends[idir]-ttmp)/self.tends[idir] > self.dtjacc and iatt==0:
@@ -1023,6 +1025,8 @@ class nbody6_cluster:
 					if (self.tends[idir]-ttmp)/self.tends[idir] > self.dtjacc and iatt>=3:
 						print('Error: Failure to run for {0} after {1} attempts...'.format(self.dirs[idir], iatt))
 						sys.exit()
+			
+			print('Reading to numpy...')
 			self.read_to_npy(force=True, checkT=True)
 			os.chdir(homedir)
 		
