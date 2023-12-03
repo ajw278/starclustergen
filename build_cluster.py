@@ -552,7 +552,7 @@ if __name__=='__main__':
     nbins0 = int(np.sum(bf))
 
     sim = nbi.nbody6_cluster(rs_all.T, vs_all.T, ms_all,  outname='clustersim', dtsnap_Myr =0.01, \
-                tend_Myr = 3.0, gasparams=None, etai=0.05, etar=0.05, etau=0.1, dtmin_Myr=1e-8, \
+                tend_Myr = 3.0, gasparams=None, etai=0.01, etar=0.01, etau=0.01, dtmin_Myr=1e-8, \
                 rmin_pc=1e-4,dtjacc_Myr=0.05, load=True, ctype='smooth', force_incomp = False, \
                     rtrunc=50.0, nbin0=nbins0, aclose_au=200.0)
     sim.evolve()
