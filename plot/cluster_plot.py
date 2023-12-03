@@ -82,6 +82,7 @@ def plot_3dpos(simulation, dim=None, save=True, rlim=20.0):
 		ax.set_zlim([-rlim, rlim])
 		
 		num_frames = rstars.shape[0]
+		print(num_frames, rstars.shape, times.shape)
 
 		ani = FuncAnimation(fig, update, frames=num_frames, fargs=(rstars, times, sc, time_text),
 				interval=1, blit=False)
@@ -99,11 +100,12 @@ def plot_3dpos(simulation, dim=None, save=True, rlim=20.0):
 	r*=runits
 	t*=tunits
 	
-	incinds = resample_times(t, 0.05)
+	dtmin = np.amin(np.diff(t))
+	incinds = resample_times(t, dtmin)
 	r_ = r[incinds]
 	t_ = t[incinds]
 	
-	create_3d_stars_animation(r, t,filename='stars_animation.mp4')
+	create_3d_stars_animation(r_, t_,filename='stars_animation.mp4')
 	
 		
 	
@@ -117,18 +119,12 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 	munits, runits, tunits, vunits = simulation.units_astro
 	t *= tunits
 
-	print(r.shape)
 	rsep = cdist(r[0], r[0])
 	rsep = rsep[np.triu_indices(len(r[0]),k=1)]
-	print(rsep)
 	rsep = rsep.flatten()
 
 	bins=  np.logspace(-4., 1.5, 25)
 	weights = 1./rsep/rsep
-	plt.hist(rsep*runits, bins=bins, weights=weights, density=True, histtype='step')
-	plt.xscale('log')
-	plt.yscale('log')
-	plt.show()
 
 	tind = np.argmin(np.absolute(t-time))
 
