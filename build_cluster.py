@@ -447,7 +447,7 @@ def select_istars(rstars, rmax, sharpness=10.0):
     yi = rstars[1, :]
     zi = rstars[2, :]
 
-    ax.scatter(x, y, z, c='r', marker='o', s=1)
+    ax.scatter(xi, yi, zi, c='r', marker='o', s=1)
     #ax.scatter(xi, yi, zi, c='b', marker='o', s=1)
 
     ax.set_xlabel('X')
@@ -464,8 +464,8 @@ def select_istars(rstars, rmax, sharpness=10.0):
 if __name__=='__main__':
     
     if not os.path.isfile('sim_ics_r.npy') or not os.path.isfile('sim_ics_v.npy') or not os.path.isfile('sim_ics_m.npy'):
-        binsep = distance*deg2rad*(10.**-2.0)/1.5
-        Lbox  = 20.0
+        binsep = distance*deg2rad*(10.**-1.5)/1.5
+        Lbox  = 60.0
         lNbox_est = math.log2(Lbox/binsep)
         Nbox = int(2.**(int(lNbox_est)))
 
@@ -497,7 +497,7 @@ if __name__=='__main__':
 
         print('Nbox:', Nbox)
         if not os.path.isfile('rgbox.npy'):
-            rs = gf.build_cluster(Nstars=10000, Nbox=Nbox,  Lbox=Lbox, Rcl = 10.0, \
+            rs = gf.build_cluster(Nstars=10000, Nbox=Nbox,  Lbox=Lbox, Rcl = 30.0, \
                      sharp_edge= 10.0, Pk_norm=Pk_norm, Pk_index=Pk_index, normed_covmat=covmat, mu=mu, seed=seed)
             np.save('rgbox', rs)
         else:
@@ -551,7 +551,7 @@ if __name__=='__main__':
     print(rs_all.shape, vs_all.shape)
     nbins0 = int(np.sum(bf))
 
-    sim = nbi.nbody6_cluster(rs_all.T, vs_all.T, ms_all,  outname='clustersim', dtsnap_Myr =0.01, \
+    sim = nbi.nbody6_cluster(rs_all.T, vs_all.T, ms_all,  outname='clustersim', dtsnap_Myr =0.001, \
                 tend_Myr = 3.0, gasparams=None, etai=0.05, etar=0.05, etau=0.1, dtmin_Myr=1e-8, \
                 rmin_pc=1e-4,dtjacc_Myr=0.05, load=True, ctype='smooth', force_incomp = False, \
                     rtrunc=50.0, nbin0=nbins0, aclose_au=50.0)

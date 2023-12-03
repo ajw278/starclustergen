@@ -25,6 +25,15 @@ def correlation_function(dr, svmax=2e5,lmin=1.0, **svparams):
 def RQ_Kernel(dr, lmin=0.5, alpha=1.0, **svparams):
     return (1.+(dr/lmin)**2)**-alpha
 
+"""def force_psd(matrix, epsilon=1e-8):
+    eigvals, eigvecs = np.linalg.eigh(matrix)
+    eigvals[eigvals < epsilon] = epsilon
+    psd_matrix = np.dot(np.dot(eigvecs, np.diag(eigvals)), eigvecs.T)
+    return psd_matrix"""
+
+def force_psd(matrix, alpha=1e-2):
+    psd_matrix = matrix*(1.+ alpha*np.eye(len(matrix)))
+    return psd_matrix
 
 def plot_dvNN(rs, vs, **svparams):
     positions = rs.T
@@ -109,7 +118,7 @@ def plot_dvNN(rs, vs, **svparams):
     plt.show()
     
 
-def velocity_gen(rstars, sigv=2.0e5, **svparams):
+def velocity_gen(rstars, sigv=0.5e5, **svparams):
     
     positions = rstars.T
     
@@ -120,7 +129,7 @@ def velocity_gen(rstars, sigv=2.0e5, **svparams):
     
 
     # Apply the covariance function element-wise to obtain the covariance matrix
-    covmat = correlation_function(drmat, lmin=2.0, **svparams)
+    covmat = correlation_function(drmat, lmin=0.1*np.median(drmat), **svparams)
     
     print(covmat)
     print(covmat.shape)
@@ -152,6 +161,8 @@ def velocity_gen(rstars, sigv=2.0e5, **svparams):
         print("The matrix is positive semi-definite.")
     else:
         print("The matrix is NOT positive semi-definite.")
+        print('Projecting onto the PSD cone...')
+        covmat = force_psd(covmat, alpha=1e-2)
 
     
     

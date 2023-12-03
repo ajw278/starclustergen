@@ -188,9 +188,18 @@ def gen_gfield(covmat=def_covmat, mu=def_mu, Ndim=ND, Nbox =Ngrid , Lbox=Lscale,
     cluster_shape = pmulti_gauss(rmgr, mu, invcov)
     
     
-    
+    lnd_ = np.log(density_)
+    density_ = np.exp(density_)
+    lnmu = np.mean(lnd_)
+    lnd_ -= lnmu
+    lnd_ *= 2.0
+    lnd_ += lnmu
+    density_ = np.exp(lnd_)
+
     density = density_*(cluster_shape**sharp_edge)
     density /= np.amax(density)
+
+
     
     if not pk2d_func is None or True:
         surfdensity = np.sum(density, axis=2)
@@ -206,8 +215,7 @@ def gen_gfield(covmat=def_covmat, mu=def_mu, Ndim=ND, Nbox =Ngrid , Lbox=Lscale,
         lnvar = np.var(lndensity)
         lnmean = np.mean(lndensity)
         lndensity -= lnmean
-        lndensity /= 2.0
-        lndensity += 0.5
+        lndensity *= 10.0
         
         density_alt = np.exp(lndensity)
         print('lnvar, lnmean:', lnvar, lnmean)
@@ -224,7 +232,7 @@ def gen_gfield(covmat=def_covmat, mu=def_mu, Ndim=ND, Nbox =Ngrid , Lbox=Lscale,
         plt.plot(k, 30.*k**-1.3 /(30.*k[0]**-1.3))
         
         dbins, dPk = np.load('Taurus_Pk.npy')[:]
-        plt.plot(dbins, dPk/dPk[0])
+        plt.plot(dbins, dPk/dPk[0], label='TAURUS Normalised')
         plt.xscale('log')
         plt.yscale('log')
         plt.show()
@@ -287,15 +295,6 @@ def draw_stars(rgr, density, Nstars=500, plot=True, Pkfunc=None):
     drstars = np.array([drgr[idim][istars] for idim in range(ndim)])
     rst = random_dr(rstars, drstars)
     
-    def inv_Abel(F, R):
-        f = np.zeros(R.shape)
-        dFdR  = np.gradient(F, R)
-
-        for i, R_ in enumerate(R):
-            iR = R>R_
-            f[i] = -np.trapz(dFdR[iR]/np.sqrt(R[iR]**2-R_**2), R[iR])
-
-        return f/np.pi
 
     Rpc = np.array([rst[0]-np.median(rst[0]), rst[1]-np.median(rst[1])])
     # The number of grid points are also required when passing the samples
@@ -320,10 +319,10 @@ def draw_stars(rgr, density, Nstars=500, plot=True, Pkfunc=None):
 
         
         plt.plot(bins_samples, 30.*bins_samples**-1.3,label="Inferred 2D PS")
-        plt.legend()
         plt.xscale('log')
         plt.yscale('log')
         plt.savefig('corrfuncs.pdf', format='pdf', bbox_inches='tight')
+        plt.legend(loc='best')
         plt.close()
         
         if ndim==3:
@@ -357,7 +356,7 @@ def draw_stars(rgr, density, Nstars=500, plot=True, Pkfunc=None):
     return rst
 
 
-def plot_corrfunc(rpts, rgr):
+def plot_corrfunc(rpts):
 
     Ndim = rpts.shape[0]
     rpg = np.array([np.meshgrid(rpts[idim], rpts[idim], indexing='ij') for idim in range(Ndim)])
@@ -459,4 +458,4 @@ if __name__=='__main__':
     
     rgr, field, pkfunc = gen_gfield()
     rst = draw_stars(rgr, field, Nstars=2000)
-    plot_corrfunc(rst, rgr)
+    plot_corrfunc(rst)
