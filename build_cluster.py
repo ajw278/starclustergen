@@ -56,7 +56,7 @@ r0 = deg2rad*distance
 sv0 *= mas2rad*distance*pc2cm/year2s
 
 no_hard_edge=True
-minlogP = 3.0
+minlogP = 5.0
 maxlogP = 10.0
 
 # Define the binary fraction functions
@@ -396,10 +396,13 @@ def plot_dvNN(rs, vs):
     num_stars = len(positions)
     nearest_neighbor_distances = distances[np.arange(num_stars), nearest_neighbors]
     
+    weights=1./4./np.pi/nearest_neighbor_distances**2
+
+    weights_d=1./4./np.pi/distances**2
 
     bins = np.logspace(-4.0, 1.5)
-    plt.hist(distances.flatten(), bins=bins, density=True, histtype='step')
-    plt.hist( nearest_neighbor_distances, bins=bins,density=True, histtype='step')
+    plt.hist(distances.flatten(), bins=bins, density=True, histtype='step', weights=weights_d.flatten())
+    plt.hist( nearest_neighbor_distances, bins=bins,density=True, histtype='step', weights=weights)
     plt.yscale('log')
     plt.xscale('log')
     plt.show()
@@ -549,10 +552,12 @@ if __name__=='__main__':
     nbins0 = int(np.sum(bf))
 
     sim = nbi.nbody6_cluster(rs_all.T, vs_all.T, ms_all,  outname='clustersim', dtsnap_Myr =0.01, \
-                tend_Myr = 3.0, gasparams=None, etai=0.05, etar=0.05, etau=0.2, dtmin_Myr=1e-8, \
-                rmin_pc=1e-4,dtjacc_Myr=0.05, load=False, ctype='smooth', force_incomp = False, \
-                    rtrunc=50.0, nbin0=nbins0)
+                tend_Myr = 3.0, gasparams=None, etai=0.05, etar=0.05, etau=0.1, dtmin_Myr=1e-8, \
+                rmin_pc=1e-4,dtjacc_Myr=0.05, load=True, ctype='smooth', force_incomp = False, \
+                    rtrunc=50.0, nbin0=nbins0, aclose_au=50.0)
     sim.evolve()
+
+    #cp.encounter_analysis(sim)
     cp.plot_3dpos(sim)
     #sim = rb.setupSimulation(rs_all, vs_all*1e5*1e6*year2s/pc2cm, ms_all, units=('Myr', 'pc', 'Msun'))
     #sim.integrate(3.0)

@@ -9,7 +9,7 @@ from matplotlib.animation import FuncAnimation
 import plot_utils as cpu
 import numpy as np
 import cluster_calcs as cc
-
+from scipy.spatial.distance import cdist
 plt.rc('text', usetex=True)
 plt.rc('text.latex', preamble='\\usepackage{color}')
 
@@ -113,21 +113,39 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 	r = simulation.r
 	v = simulation.v
 	m = simulation.m
-	tunits, munits, runits = simulation.units
-	t *= tunits*s2myr
+	print('Encounter analysis...')
+	munits, runits, tunits, vunits = simulation.units_astro
+	t *= tunits
+
+	print(r.shape)
+	rsep = cdist(r[0], r[0])
+	rsep = rsep[np.triu_indices(len(r[0]),k=1)]
+	print(rsep)
+	rsep = rsep.flatten()
+
+	bins=  np.logspace(-4., 1.5, 25)
+	weights = 1./rsep/rsep
+	plt.hist(rsep*runits, bins=bins, weights=weights, density=True, histtype='step')
+	plt.xscale('log')
+	plt.yscale('log')
+	plt.show()
 
 	tind = np.argmin(np.absolute(t-time))
+
+	print(t)
 
 	t = t[:tind+1]
 	r = r[:tind+1]
 	v = v[:tind+1]
 
+	print(t)
+	print(r)
 	print('Not implemented correctly- check units')
 
 	isub= np.arange(len(m))
 
 	if  not rmax is None:
-		rmag = np.linalg.norm(r[tind],axis=1)*runits*m2pc
+		rmag = np.linalg.norm(r[tind],axis=1)*runits
 		isub = isub[np.where(rmag<rmax)[0]]
 		if len(isub)>subset:
 			isub = np.random.choice(isub, size=subset, replace=False)
@@ -157,12 +175,17 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 				print('Generating global encounter history for star {0}... '.format(istar))
 				cx, cv, cm, cn = cc.encounter_history_istar(istar, r, v, m, 4)
 		
+				[plt.plot(t, np.linalg.norm(cx[i], axis=1)*runits ) for i in range(len(cx))]
+				plt.yscale('log')
+				plt.show()
 				x_order = np.array([])
 				e_order = np.array([])
 				m_order = np.array([])
 				t_order = np.array([])
 
 				print('Obtaining neighbour lists for star {0}.'.format(istar))
+
+				
 			
 				logsx, logse, logst = cc.encounter_params(np.array(cx), np.array(cv), np.array(cm), t, float(m[istar]))
 				icol=0
@@ -171,19 +194,23 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 					plt.figure(figsize=(4.,4.))
 
 				print('Organising neighbour interactions...')
-
+				print('Number of neighbours:', cn)
+				print(logsx)
 				for inghbr in range(len(cn)):
 					all_x = np.append(all_x, logsx[inghbr])
 					all_e = np.append(all_e, logse[inghbr])
+
+					print(inghbr, logsx[inghbr])
 				
-					x_order= np.append(x_order, logsx[inghbr]*runits*m2au) 
+					x_order= np.append(x_order, logsx[inghbr]*runits) 
 					e_order= np.append(e_order, logse[inghbr]) 
-					t_order = np.append(t_order, logst[inghbr]*tunits*s2myr) 
+					t_order = np.append(t_order, logst[inghbr]*tunits) 
 					m_order = np.append(m_order, np.ones(len(logsx[inghbr]))*cm[inghbr])
 
+					print(x_order)
 					if plotall:
-						plt.plot(t*tunits*s2myr, np.linalg.norm(cx[inghbr], axis=1)*runits*m2au, color=mpl_cols[icol%len(mpl_cols)])
-						plt.scatter(np.array(logst[inghbr])*tunits*s2myr, np.array(logsx[inghbr])*runits*m2au, color=mpl_cols[icol%len(mpl_cols)], marker='+')
+						plt.plot(t*tunits, np.linalg.norm(cx[inghbr], axis=1)*runits, color=mpl_cols[icol%len(mpl_cols)])
+						plt.scatter(np.array(logst[inghbr])*tunits, np.array(logsx[inghbr])*runits, color=mpl_cols[icol%len(mpl_cols)], marker='+')
 					icol+=1
 
 				if plotall:
@@ -192,16 +219,19 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 					plt.yscale('log')
 					plt.savefig(simulation.out+'_enchist_{0}.pdf'.format(istar), format='pdf', bbox_inches='tight')
 					plt.show()
-
+				print('HERE')
+				print(x_order,t_order, e_order)
 				chron = np.argsort(t_order)
 				x_order = x_order[chron]
 				m_order = m_order[chron]
 				e_order = e_order[chron]
 				t_order = t_order[chron]
 
-				np.save(simulation.out+'_enchist_{0}'.format(istar), np.array([x_order, m_order, e_order, t_order]))
 
 				print('Closest encounter: ', np.amin(x_order), m2au, runits)
+
+
+				np.save(simulation.out+'_enchist_{0}'.format(istar), np.array([x_order, m_order, e_order, t_order]))
 
 				"""print('Calculating disc evolution for star {0}'.format(istar))
 
@@ -242,7 +272,6 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 				if len(rout_evol)>1:
 					evolve_rall.append(rout_evol)"""
 
-			
 			xmin  = np.amin(x_order)
 			print('Closest encounter for i=%d : %.2e'%(istar, xmin))
 			xmins[ict] = xmin

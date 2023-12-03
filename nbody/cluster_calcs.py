@@ -84,3 +84,69 @@ def encounter_history_istar(istar, rstars, vstars,  mstars, nclose=3):
 	cv = np.array(cv)
 	
 	return cx, cv, cm, nblst #closest_x, closest_v, closest_m, nghbrs
+
+
+def encounter_params(cx, cv, cm, ct, mstar):
+	diff = np.amin(np.diff(ct))
+
+	ce_eccs = []
+	ce_x = []
+	ce_time = []
+
+	import matplotlib.pyplot as plt
+	
+	for ix in range(len(cx)):
+		cxmag = np.apply_along_axis(np.linalg.norm, 1, cx[ix])
+		cvmag = np.apply_along_axis(np.linalg.norm, 1, cv[ix])
+		cvdotx = np.einsum('ij,ij->i', cx[ix], cv[ix])
+		print(cvdotx.shape)
+		local_minima = []
+		for ixmag in range(1,len(cxmag)-1):
+			if cvdotx[ixmag-1]<0.0 and cvdotx[ixmag]>0.0:
+				local_minima.append(ixmag-1)
+
+		
+	 	#local_minima = np.array(local_minima)
+		hs = np.cross(cx[ix][local_minima], cv[ix][local_minima])
+		if len(local_minima)>0:
+			hsmag= np.apply_along_axis(np.linalg.norm, 1, hs)
+			mu = cm[ix]+mstar
+			ls = hsmag*hsmag/mu
+			smas = 1./((2./cxmag[local_minima])-(np.power(cvmag[local_minima],2)/mu))
+			eccs = np.sqrt(1.-hsmag*hsmag/(smas*mu))
+			xmins = smas*(1.-eccs)
+
+
+			times = []
+			idt=0
+			for ivec in local_minima:
+				vr = -np.dot(cx[ix][ivec], cv[ix][ivec])/cxmag[ivec]
+				dt = (cxmag[ivec]-xmins[idt])/vr
+				if np.absolute(dt)>diff/2.:
+					dt = 0.0
+					xmins[idt] = cxmag[ivec]
+
+				times.append(ct[ivec]+dt)
+				if times[idt]<0.0:
+					print('cxmag', cxmag[ivec])
+					print('cxest', xmins[idt])
+					print(smas[idt] )
+					print(eccs[idt])
+					print(vr)
+					print('dt', dt)
+					print('t', ct[ivec])
+				idt+=1
+			ce_eccs.append(eccs)
+			ce_x.append(xmins)
+
+			ce_time.append(np.array(times))
+		else:
+			
+			ce_eccs.append(np.array([]))
+			ce_x.append(np.array([]))
+
+			ce_time.append(np.array([]))
+			
+		
+	
+	return ce_x, ce_eccs, ce_time

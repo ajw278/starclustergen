@@ -30,7 +30,7 @@ import saveload
 #mpl_cols = ['k','b','g','r','orange', 'c', 'm', 'y']
 
 class nbody6_cluster:
-	def __init__(self, rstars_pc, vstars_kms, mstars_msol, outname='clustersim', dtsnap_Myr =1e-1, tend_Myr = 1.0, assoc=None, gasparams=None, etai=0.02, etar=0.02, etau=0.2, dtmin_Myr=5e-7, dtadj_Myr=1.0, rmin_pc=1e-6, dtjacc_Myr=0.05, load=False, ctype='clumpy', force_incomp = False, starinds = None, rtrunc=50.0, nbin0=0):
+	def __init__(self, rstars_pc, vstars_kms, mstars_msol, outname='clustersim', dtsnap_Myr =1e-1, tend_Myr = 1.0, assoc=None, gasparams=None, etai=0.02, etar=0.02, etau=0.2, dtmin_Myr=5e-7, dtadj_Myr=1.0, rmin_pc=1e-6, dtjacc_Myr=0.05, load=False, ctype='clumpy', force_incomp = False, starinds = None, rtrunc=50.0, nbin0=0, aclose_au=50.0):
 		self.out = outname
 		self.idir = 0
 		self.ctype = ctype
@@ -52,6 +52,9 @@ class nbody6_cluster:
 			
 			rstars, vstars, mstars, runit, tunit, munit = cu.get_nbody_units(mstars_msol, rstars_pc, vstars_kms)
 			
+			aclose_nb = aclose_au/m2au/runit
+			
+			self.eclose = np.sqrt(np.median(mstars)/aclose_nb)
 			
 			self.dtjacc = 1.0 #dtjacc_Myr/tunit/s2myr
 			self.tend = tend_Myr/tunit/s2myr
@@ -507,9 +510,9 @@ class nbody6_cluster:
 		#Distance creiterion for reg search
 		indict['RMIN'] = self.rmin
 		#Reg tstep param (2*pi/ETAU steps/orbit)
-		indict['ETAU'] = 0.1 # self.etau
+		indict['ETAU'] =  self.etau
 		#binding energy per unit mass fror hard binary
-		indict['ECLOSE'] = 1.0
+		indict['ECLOSE'] = self.eclose
 		#Gmin relative two-body pert for unperturbed motion
 		indict['GMIN'] = 1e-7
 		#Secondary termination param for soft binaries
@@ -657,9 +660,8 @@ class nbody6_cluster:
 						#subconf_list.append(int(fname.split('.')[-1]))
 						files_all.append(files_tmp[ifile])
 
-
-
 			print('All files:', files_all)
+			print('CWD:', os.getcwd())
 			while(len(files_all))>maxfiles:
 				files_all = files_all[::2]
 			fints = [int(x.split('.')[-1]) for x in files_all]
@@ -1025,6 +1027,10 @@ class nbody6_cluster:
 		
 	def evolve(self):
 		self.run_nbody()
+		"""homedir =os.getcwd()
+		os.chdir(self.dirs[self.idir])
+		self.read_to_npy(force=True, checkT=True)
+		os.chdir(homedir)"""
 		self.combine()
 
 		
