@@ -3,19 +3,17 @@ from __future__ import print_function
 import os
 import numpy as np
 #import pyximport; pyximport.install(setup_args={'include_dirs':[np.get_include()]})
-import time
 import copy
 import sys
 import shutil
 import glob 
-from multiprocessing import Process, Queue
-import scipy.interpolate as interpolate
+
 
 scriptdir = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(scriptdir)
 sys.path.append(scriptdir+'/../general')
 
-
+import subprocess
 #import cluster_calcs as cc
 
 from common import *
@@ -995,41 +993,46 @@ class nbody6_cluster:
 					print('Input file detected.')
 					
 				if len(outfiles)==0:
-					RUN_STR =  NBODYEXE + " < {0} 2>&1 {1}".format(self.out+'.input', self.out+'.output')
+					RUN_STR =  NBODYEXE + " < {0} > {1}".format(self.out+'.input', self.out+'.output')
 					print(RUN_STR)
-					command = cclass.Command(RUN_STR)
-					command.run(timeout=20000)
+					#command = cclass.Command(RUN_STR)
+
+					#command.run(timeout=20000)
+					subprocess.run(RUN_STR) 
+
 				else:
 					print('Output file detected.')	
 				
 				if hasattr(self, 'tends'):
 					ttmp = 0.0
 					iatt=0
-					while (self.tends[idir]-ttmp)/self.tends[idir] > self.dtjacc and iatt<3:
-						print(iatt)			
-						rtmp, vtmp, mtmp, ttmp, tunits, munits, runits = self.read_to_npy(force=False, checkT=False)
-						print(ttmp)
-
-						if (self.tends[idir]-ttmp)/self.tends[idir] > self.dtjacc and iatt==0:
-							rtmp, vtmp, mtmp, ttmp, tunits, munits, runits = self.read_to_npy(force=True, checkT=False)
-				
-						if (self.tends[idir]-ttmp)/self.tends[idir] > self.dtjacc:
-							print('Simulation ended early for {0}. Restarting ({1})...'.format(self.dirs[idir], iatt))
-							print(self.tends, ttmp)
-							print('T_end = {0}/{1}'.format(ttmp, self.tends[idir]))
-							inname = self.write_to_input(restart=0)
-							RUN_STR_NEW =  NBODYEXE + " < {0} 2>&1 {1}".format(inname+'.input', inname+'.output')
-							print(RUN_STR_NEW)
-							command = cclass.Command(RUN_STR_NEW)
-							command.run(timeout=20000)
-							rtmp, vtmp, mtmp, ttmp, tunits, munits, runits = self.read_to_npy(force=True, checkT=False)
-						
-						iatt+=1
-					if (self.tends[idir]-ttmp)/self.tends[idir] > self.dtjacc and iatt>=3:
-						raise Exception('Failure to run for {0} after {1} attempts...'.format(self.dirs[idir], iatt))
+					tend = tends[idir]
 				else:
-					raise Exception('nbody run attempted before end times were defined.')
+					tend = self.tend
+
+				while (tend-ttmp)/self.tends[idir] > self.dtjacc and iatt<3:
+					print('Did not make it to end time on previous attempt.'
+		   			print('New attempt {0} starting at time {1}'.format(iatt, ttmp))		
+					rtmp, vtmp, mtmp, ttmp, tunits, munits, runits = self.read_to_npy(force=False, checkT=False)
+
+					if (self.tends[idir]-ttmp)/self.tends[idir] > self.dtjacc and iatt==0:
+						rtmp, vtmp, mtmp, ttmp, tunits, munits, runits = self.read_to_npy(force=True, checkT=False)
 			
+					if (self.tends[idir]-ttmp)/self.tends[idir] > self.dtjacc:
+						print('Simulation ended early for {0}. Restarting ({1})...'.format(self.dirs[idir], iatt))
+						print(self.tends, ttmp)
+						print('T_end = {0}/{1}'.format(ttmp, self.tends[idir]))
+						inname = self.write_to_input(restart=0)
+						RUN_STR_NEW =  NBODYEXE + " < {0} > {1}".format(inname+'.input', inname+'.output')
+						print(RUN_STR_NEW)
+						#command = cclass.Command(RUN_STR_NEW)
+						#command.run(timeout=20000)
+						subprocess.run(RUN_STR) 
+						rtmp, vtmp, mtmp, ttmp, tunits, munits, runits = self.read_to_npy(force=True, checkT=False)
+					
+					iatt+=1
+				if (self.tends[idir]-ttmp)/self.tends[idir] > self.dtjacc and iatt>=3:
+					raise Exception('Failure to run for {0} after {1} attempts...'.format(self.dirs[idir], iatt))
 			os.chdir(homedir)
 		
 	def evolve(self):
