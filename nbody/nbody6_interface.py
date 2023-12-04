@@ -1011,7 +1011,7 @@ class nbody6_cluster:
 					tend = self.tend
 
 				while (tend-ttmp)/self.tends[idir] > self.dtjacc and iatt<3:
-					print('Did not make it to end time on previous attempt.'
+					print('Did not make it to end time on previous attempt.')
 		   			print('New attempt {0} starting at time {1}'.format(iatt, ttmp))		
 					rtmp, vtmp, mtmp, ttmp, tunits, munits, runits = self.read_to_npy(force=False, checkT=False)
 
