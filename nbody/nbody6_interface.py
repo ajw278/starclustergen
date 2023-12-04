@@ -977,8 +977,8 @@ class nbody6_cluster:
 				else:
 					print('Input file detected.')
 					
+				RUN_STR =  NBODYEXE + " < {0} > {1}".format(self.out+'.input', self.out+'.output')
 				if len(outfiles)==0:
-					RUN_STR =  NBODYEXE + " < {0} > {1}".format(self.out+'.input', self.out+'.output')
 					print(RUN_STR)
 					#command = cclass.Command(RUN_STR)
 
