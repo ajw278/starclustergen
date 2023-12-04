@@ -881,14 +881,14 @@ class nbody6_cluster:
 				self.save()	
 		
 		if len(rs_all)>0:
-			self.rs= rs_all
-			self.vs = vs_all
+			self.rs= rs_all[-1]
+			self.vs = vs_all[-1]
 			self.t = times
 		else:
 			self.t =0.0
 		#self.save()
 
-		return self.rs[-1], self.vs[-1], self.ms, self.t[-1], tunits_ast, munits_ast, runits_ast 
+		return self.rs, self.vs, self.ms, self.t[-1], tunits_ast, munits_ast, runits_ast 
 
 
 	def magas_tseries(self):
@@ -995,7 +995,7 @@ class nbody6_cluster:
 				else:
 					tend = self.tend
 				
-				
+
 				while (tend-ttmp)/tend > 0.05 and iatt<3:		
 					rtmp, vtmp, mtmp, ttmp, tunits, munits, runits = self.read_to_npy(force=reread, checkT=False)
 					
