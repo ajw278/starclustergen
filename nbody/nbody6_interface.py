@@ -902,7 +902,7 @@ class nbody6_cluster:
 			self.t =0.0
 		#self.save()
 
-		return self.rs, self.vs, self.ms, self.t, tunits_ast, munits_ast, runits_ast 
+		return self.rs[-1], self.vs[-1], self.ms, self.t[-1], tunits_ast, munits_ast, runits_ast 
 
 
 	def magas_tseries(self):
@@ -985,27 +985,30 @@ class nbody6_cluster:
 				os.chdir(self.dirs[idir])
 				print('Current directory:', os.getcwd())
 			
+				outfiles = glob.glob('conf.3_0.*')
+
+
+				
 				if not os.path.isfile(self.out+'.input'):
 					self.write_to_input()
 				else:
 					print('Input file detected.')
 					
-				RUN_STR =  NBODYEXE + " < {0} 2>&1 {1}".format(self.out+'.input', self.out+'.output')
-				outfiles = glob.glob('conf.3_0.*')
-
 				if len(outfiles)==0:
+					RUN_STR =  NBODYEXE + " < {0} 2>&1 {1}".format(self.out+'.input', self.out+'.output')
 					print(RUN_STR)
 					command = cclass.Command(RUN_STR)
 					command.run(timeout=20000)
 				else:
 					print('Output file detected.')	
+				
 				if hasattr(self, 'tends'):
 					ttmp = 0.0
 					iatt=0
-					exit_flag=False
 					while (self.tends[idir]-ttmp)/self.tends[idir] > self.dtjacc and iatt<3:
 						print(iatt)			
 						rtmp, vtmp, mtmp, ttmp, tunits, munits, runits = self.read_to_npy(force=False, checkT=False)
+						print(ttmp)
 
 						if (self.tends[idir]-ttmp)/self.tends[idir] > self.dtjacc and iatt==0:
 							rtmp, vtmp, mtmp, ttmp, tunits, munits, runits = self.read_to_npy(force=True, checkT=False)
@@ -1023,11 +1026,10 @@ class nbody6_cluster:
 						
 						iatt+=1
 					if (self.tends[idir]-ttmp)/self.tends[idir] > self.dtjacc and iatt>=3:
-						print('Error: Failure to run for {0} after {1} attempts...'.format(self.dirs[idir], iatt))
-						sys.exit()
+						raise Exception('Failure to run for {0} after {1} attempts...'.format(self.dirs[idir], iatt))
+				else:
+					raise Exception('nbody run attempted before end times were defined.')
 			
-			print('Reading to numpy...')
-			self.read_to_npy(force=True, checkT=True)
 			os.chdir(homedir)
 		
 	def evolve(self):
