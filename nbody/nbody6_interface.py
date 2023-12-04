@@ -301,7 +301,7 @@ class nbody6_cluster:
 		"""
 
 		indict  = {}
-		if restart==None:
+		if restart is None:
 			indict['KSTART'] = 1 #1
 		else:
 			indict['KSTART'] = int(2+(restart%3)) #2
@@ -317,8 +317,7 @@ class nbody6_cluster:
 			elif os.path.isfile('fort.2'):
 				shutil.copyfile('fort.2','fort.1')
 			else:
-				print('Restart attempted without restart file.')
-				sys.exit()
+				raise Exception('Restart attempted without restart file.')
 			
 		indict['TCOMP'] = 1000000.0 #2
 		#End time in Myr - don't use, use nbody units instead (TCRIT)
@@ -1006,22 +1005,22 @@ class nbody6_cluster:
 				if hasattr(self, 'tends'):
 					ttmp = 0.0
 					iatt=0
-					tend = tends[idir]
+					tend = self.tends[idir]
 				else:
 					tend = self.tend
 
-				while (tend-ttmp)/self.tends[idir] > self.dtjacc and iatt<3:
+				while (tend-ttmp)/tend > self.dtjacc and iatt<3:
 					print('Did not make it to end time on previous attempt.')
 					print('New attempt {0} starting at time {1}'.format(iatt, ttmp))		
 					rtmp, vtmp, mtmp, ttmp, tunits, munits, runits = self.read_to_npy(force=False, checkT=False)
 
-					if (self.tends[idir]-ttmp)/self.tends[idir] > self.dtjacc and iatt==0:
+					if (tend-ttmp)/tend > self.dtjacc and iatt==0:
 						rtmp, vtmp, mtmp, ttmp, tunits, munits, runits = self.read_to_npy(force=True, checkT=False)
 			
-					if (self.tends[idir]-ttmp)/self.tends[idir] > self.dtjacc:
+					if (tend-ttmp)/tend > self.dtjacc:
 						print('Simulation ended early for {0}. Restarting ({1})...'.format(self.dirs[idir], iatt))
 						print(self.tends, ttmp)
-						print('T_end = {0}/{1}'.format(ttmp, self.tends[idir]))
+						print('T_end = {0}/{1}'.format(ttmp, tend))
 						inname = self.write_to_input(restart=0)
 						RUN_STR_NEW =  NBODYEXE + " < {0} > {1}".format(inname+'.input', inname+'.output')
 						print(RUN_STR_NEW)
