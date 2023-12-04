@@ -87,7 +87,7 @@ def plot_3dpos(simulation, dim=None, save=True, rlim=20.0):
 		ani = FuncAnimation(fig, update, frames=num_frames, fargs=(rstars, times, sc, time_text),
 				interval=1, blit=False)
 
-		ani.save(filename, writer='ffmpeg', fps=3, dpi=400)
+		ani.save(filename, writer='ffmpeg', fps=20, dpi=800)
 		plt.show()
 
 	t = simulation.t
