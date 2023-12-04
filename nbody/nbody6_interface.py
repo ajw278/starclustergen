@@ -367,7 +367,7 @@ class nbody6_cluster:
 		#0 1 1 0 1 0 4 0 0 2
 		indict['KZ'] = []
 		#KZ(1) - save file to fort.1 (1 - end of run or when dummy file STOP, 2- every 100*NMAX steps 8
-		indict['KZ'].append(1) 
+		indict['KZ'].append(2) 
 		#KZ(2) - save file to fort.2 (output time 1, output time and restart of energy error>5*QE) 9
 		indict['KZ'].append(2)
 		#KZ(3) - save basic data to file conf.3 at output time 10
@@ -977,13 +977,14 @@ class nbody6_cluster:
 				else:
 					print('Input file detected.')
 					
-				RUN_STR =  NBODYEXE + " < {0} > {1}".format(self.out+'.input', self.out+'.output')
+				#RUN_STR =  NBODYEXE + " < {0} > {1}".format(self.out+'.input', self.out+'.output')
+				RUN_LST = [NBODYEXE, ' < {0}'.format(self.out+'.input'), '> {0}'.format(self.out+'.output')]
 				if len(outfiles)==0:
-					print(RUN_STR)
+					print(RUN_LST)
 					#command = cclass.Command(RUN_STR)
 
 					#command.run(timeout=20000)
-					subprocess.run(RUN_STR) 
+					subprocess.run(RUN_LST) 
 
 				else:
 					print('Output file detected.')	
@@ -1011,11 +1012,13 @@ class nbody6_cluster:
 						print(self.tends, ttmp)
 						print('T_end = {0}/{1}'.format(ttmp, tend))
 						inname = self.write_to_input(restart=0)
-						RUN_STR_NEW =  NBODYEXE + " < {0} > {1}".format(inname+'.input', inname+'.output')
-						print(RUN_STR_NEW)
+
+						RUN_LST_NEW = [NBODYEXE, ' < {0}'.format(inname+'.input'), '> {0}'.format(inname+'.output')]
+						#RUN_STR_NEW =  NBODYEXE + " < {0} > {1}".format(inname+'.input', inname+'.output')
+						print(RUN_LST_NEW)
 						#command = cclass.Command(RUN_STR_NEW)
 						#command.run(timeout=20000)
-						subprocess.run(RUN_STR) 
+						subprocess.run(RUN_LST_NEW) 
 						rtmp, vtmp, mtmp, ttmp, tunits, munits, runits = self.read_to_npy(force=True, checkT=False)
 					
 					iatt+=1
