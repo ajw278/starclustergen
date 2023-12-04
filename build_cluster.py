@@ -557,7 +557,7 @@ if __name__=='__main__':
                     rtrunc=50.0, nbin0=nbins0, aclose_au=200.0)
     sim.evolve()
 
-    #cp.encounter_analysis(sim)
+    cp.encounter_analysis(sim)
     cp.plot_3dpos(sim)
     #sim = rb.setupSimulation(rs_all, vs_all*1e5*1e6*year2s/pc2cm, ms_all, units=('Myr', 'pc', 'Msun'))
     #sim.integrate(3.0)

@@ -54,7 +54,7 @@ class nbody6_cluster:
 			
 			self.eclose = np.sqrt(np.median(mstars)/aclose_nb)
 			
-			self.dtjacc = 1.0 #dtjacc_Myr/tunit/s2myr
+			self.dtjacc = dtjacc_Myr/tunit/s2myr
 			self.tend = tend_Myr/tunit/s2myr
 			print('Tend:', self.tend, tend_Myr)
 			self.rmin = rmin_pc/runit/m2pc
@@ -305,17 +305,17 @@ class nbody6_cluster:
 			indict['KSTART'] = 1 #1
 		else:
 			indict['KSTART'] = int(2+(restart%3)) #2
-			if os.path.isfile('fort.1'):
-				if os.path.isfile('fort.2'):
-					sdate1 = os.path.getmtime('fort.1')
-					sdate2 = os.path.getmtime('fort.2')
-					ssize1 = os.path.getsize('fort.1')
-					ssize2 = os.path.getsize('fort.2')
+			if os.path.isfile('comm.1'):
+				if os.path.isfile('comm.2'):
+					sdate1 = os.path.getmtime('comm.1')
+					sdate2 = os.path.getmtime('comm.2')
+					ssize1 = os.path.getsize('comm.1')
+					ssize2 = os.path.getsize('comm.2')
 					if sdate1<sdate2 and ssize2>0.5*ssize1:
-						shutil.copyfile('fort.1','fort_backup.1')
-						shutil.copyfile('fort.2', 'fort.1')
-			elif os.path.isfile('fort.2'):
-				shutil.copyfile('fort.2','fort.1')
+						shutil.copyfile('comm.1','comm_backup.1')
+						shutil.copyfile('comm.2', 'comm.1')
+			elif os.path.isfile('comm.2'):
+				shutil.copyfile('comm.2','comm.1')
 			else:
 				raise Exception('Restart attempted without restart file.')
 			
@@ -625,8 +625,6 @@ class nbody6_cluster:
 
 		ms  = self.ms[stinds]
 
-		read = False
-
 		if not os.path.isfile(self.out+'_t.npy') or not os.path.isfile(self.out+'_r.npy') or not os.path.isfile(self.out+'_v.npy') or force:
 			read=True
 			def read_header(file):
@@ -693,8 +691,6 @@ class nbody6_cluster:
 
 
 				times[itime] = h2[1]
-				print(h2)
-				print(times[itime], self.units_astro[2])
 				print('{0}: t={1} Myr'.format(fname, times[itime]*self.units_astro[2]))
 				for iitime in range(itime, len(rs_all)):
 					rs_all[iitime][NAME] =X
@@ -710,9 +706,7 @@ class nbody6_cluster:
 			times = times[asort]
 
 			if hasattr(self, 'tends') and len(times)>0:
-				print(self.idir, self.tends, self.tends[self.idir])
 				tendtmp = np.asarray(self.tends[self.idir])
-				print(tendtmp, times)
 				iend = np.argmin(np.absolute(tendtmp-times))
 				if iend+1<len(times) and times[iend]<=tendtmp:
 				    iend+=1
@@ -777,8 +771,7 @@ class nbody6_cluster:
 					ilet+=1
 
 				if ilet==len(last_adj):
-					print('Error: Virial ratio not found in ouput.')
-					sys.exit()
+					raise Exception('Error: Virial ratio not found in ouput.')
 				else:
 					Qvirout = float(virstr)
 			
@@ -794,9 +787,7 @@ class nbody6_cluster:
 				Qvir = np.absolute(ke/gpot)
 				print('Virial Ratio Sim/PP: {0}/{1}'.format(Qvirout, Qvir))
 				if abs(Qvir-Qvirout)/Qvirout>= 5e-2:
-					print('Error: virial ratio calculation mismatch - sim output = {0}, pp calc = {1}'.format(Qvirout, Qvir))
-					sys.exit()
-
+					raise Exception('virial ratio calculation mismatch - sim output = {0}, pp calc = {1}'.format(Qvirout, Qvir))
 			if checkT:
 				print(times, self.tends[self.idir])
 				itmax = np.argmin(np.absolute(times-self.tends[self.idir]))
@@ -808,12 +799,10 @@ class nbody6_cluster:
 				
 				if self.idir< len(self.tends)-1:
 					if np.absolute(times[itmax]-self.tends[self.idir])/self.tends[self.idir] >chkval:
-						print('Error: finish time inaccuracy')
-						sys.exit()
+						raise Exception('finish time inaccuracy')
 				else:
 					if (self.tends[self.idir]- times[itmax])/self.tends[self.idir] >chkval:
-						print('Error: finish time inaccuracy')
-						sys.exit()
+						raise Exception('finish time inaccuracy')
 				
 				itimes = np.where(times<=times[itmax])[0]
 				times = times[itimes]
@@ -930,48 +919,45 @@ class nbody6_cluster:
 	
 
 	
-	def combine(self):
-		if not self.complete:
-			if not hasattr(self, 'r') or not hasattr(self, 'v') or not hasattr(self, 't'):
-				idir = 0
-				for idir in range(len(self.dirs)):
-					d = self.dirs[idir]
-					if os.path.isdir(d):
-						if idir==0:
-							t = np.load(d+'/'+self.out+'_t.npy')
-							r = np.load(d+'/'+self.out+'_r.npy')
-							v = np.load(d+'/'+self.out+'_v.npy')
-							#tunits, munits, runits = np.load(self.out+'_units.npy')
-						else:
-							r = np.append(r, np.load(d+'/'+self.out+'_r.npy'), axis=0)
-							v = np.append(v, np.load(d+'/'+self.out+'_v.npy'), axis=0)
-							ttmp =np.load(d+'/'+self.out+'_t.npy')
-							ttmp += t[-1]
-							t = np.append(t, ttmp, axis=0)
-
-						print('Shape r:', r.shape)
+	def combine(self, reread=False):
+		if not self.complete or reread:
+			idir = 0
+			for idir in range(len(self.dirs)):
+				d = self.dirs[idir]
+				if os.path.isdir(d):
+					if idir==0:
+						t = np.load(d+'/'+self.out+'_t.npy')
+						r = np.load(d+'/'+self.out+'_r.npy')
+						v = np.load(d+'/'+self.out+'_v.npy')
+						#tunits, munits, runits = np.load(self.out+'_units.npy')
 					else:
-						print('Error: "{0}" not found.'.format(d))
-			
-				np.save(self.out+'_t', t)
-				np.save(self.out+'_r', r)
-				np.save(self.out+'_v', v)
-				#np.save(self.out+'_units', np.array([tunits, munits, runits]))
+						r = np.append(r, np.load(d+'/'+self.out+'_r.npy'), axis=0)
+						v = np.append(v, np.load(d+'/'+self.out+'_v.npy'), axis=0)
+						ttmp =np.load(d+'/'+self.out+'_t.npy')
+						ttmp += t[-1]
+						t = np.append(t, ttmp, axis=0)
+				else:
+					raise Exception('"{0}" not found.'.format(d))
+		
+			np.save(self.out+'_t', t)
+			np.save(self.out+'_r', r)
+			np.save(self.out+'_v', v)
+			#np.save(self.out+'_units', np.array([tunits, munits, runits]))
 
-				self.r = r 
-				self.v = v
-				self.t = t
-				self.m = self.ms
-				#self.units_SI = np.array([tunits, munits, runits])
-				self.save()
+			self.r = r 
+			self.v = v
+			self.t = t
+			self.m = self.ms
+			#self.units_SI = np.array([tunits, munits, runits])
+			self.save()
 		
 		return None
 
 	
-	def run_nbody(self):
+	def run_nbody(self, reread=False):
 		homedir = os.getcwd()
 
-		if not self.complete:
+		if not self.complete or reread:
 	
 			for idir in range(len(self.dirs)):
 				self.idir=idir
@@ -1008,17 +994,20 @@ class nbody6_cluster:
 					tend = self.tends[idir]
 				else:
 					tend = self.tend
-
-				while (tend-ttmp)/tend > self.dtjacc and iatt<3:
-					print('Did not make it to end time on previous attempt.')
-					print('New attempt {0} starting at time {1}'.format(iatt, ttmp))		
-					rtmp, vtmp, mtmp, ttmp, tunits, munits, runits = self.read_to_npy(force=False, checkT=False)
-
-					if (tend-ttmp)/tend > self.dtjacc and iatt==0:
+				
+				
+				while (tend-ttmp)/tend > 0.05 and iatt<3:		
+					rtmp, vtmp, mtmp, ttmp, tunits, munits, runits = self.read_to_npy(force=reread, checkT=False)
+					
+					if (tend-ttmp)/tend > 0.05 and iatt==0:
 						rtmp, vtmp, mtmp, ttmp, tunits, munits, runits = self.read_to_npy(force=True, checkT=False)
+
+						print('Output files found up to time {0}'.format(ttmp))
 			
-					if (tend-ttmp)/tend > self.dtjacc:
-						print('Simulation ended early for {0}. Restarting ({1})...'.format(self.dirs[idir], iatt))
+					if (tend-ttmp)/tend > 0.05:
+
+						print('Did not make it to end time on previous attempt.')
+						print('New attempt {0} starting at time {1}'.format(iatt, ttmp))
 						print(self.tends, ttmp)
 						print('T_end = {0}/{1}'.format(ttmp, tend))
 						inname = self.write_to_input(restart=0)
@@ -1033,13 +1022,8 @@ class nbody6_cluster:
 				if (self.tends[idir]-ttmp)/self.tends[idir] > self.dtjacc and iatt>=3:
 					raise Exception('Failure to run for {0} after {1} attempts...'.format(self.dirs[idir], iatt))
 			os.chdir(homedir)
-		
-	def evolve(self):
-		self.run_nbody()
-		"""homedir =os.getcwd()
-		os.chdir(self.dirs[self.idir])
-		self.read_to_npy(force=True, checkT=True)
-		os.chdir(homedir)"""
-		self.combine()
+		return None
 
-		
+	def evolve(self, reread=True):
+		self.run_nbody(reread=reread)
+		self.combine(reread=reread)
