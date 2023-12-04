@@ -37,6 +37,7 @@ class nbody6_cluster:
 		else:
 			load_succ =False
 
+		self.eclose = 2.4
 		if not load_succ:
 			self.complete=False
 			print('No previous simulation found...')
@@ -1011,7 +1012,7 @@ class nbody6_cluster:
 						print('New attempt {0} starting at time {1}'.format(iatt, ttmp))
 						print(self.tends, ttmp)
 						print('T_end = {0}/{1}'.format(ttmp, tend))
-						inname = self.write_to_input(restart=0)
+						inname = self.write_to_input(restart=1)
 
 						RUN_LST_NEW = [NBODYEXE, ' < {0}'.format(inname+'.input'), '> {0}'.format(inname+'.output')]
 						#RUN_STR_NEW =  NBODYEXE + " < {0} > {1}".format(inname+'.input', inname+'.output')
