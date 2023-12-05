@@ -998,8 +998,6 @@ class nbody6_cluster:
 					tend = self.tends[idir]
 				else:
 					tend = self.tend
-				os.chdir(homedir)
-				return None
 
 				while (tend-ttmp)/tend > 0.05 and iatt<3:		
 					rtmp, vtmp, mtmp, ttmp, tunits, munits, runits = self.read_to_npy(force=reread, checkT=False)
@@ -1024,6 +1022,8 @@ class nbody6_cluster:
 						#command.run(timeout=20000)
 						if suppress_restart:
 							print("Restart call suppressed. Have written a restart file in the sim. directory")
+						elif reread:
+							rtmp, vtmp, mtmp, ttmp, tunits, munits, runits = self.read_to_npy(force=True, checkT=False)
 						else:
 							subprocess.run(RUN_LST_NEW) 
 							rtmp, vtmp, mtmp, ttmp, tunits, munits, runits = self.read_to_npy(force=True, checkT=False)
