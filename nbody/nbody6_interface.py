@@ -955,7 +955,7 @@ class nbody6_cluster:
 		return None
 
 	
-	def run_nbody(self, reread=False):
+	def run_nbody(self, reread=False, suppress_restart=True):
 		homedir = os.getcwd()
 
 		if not self.complete or reread:
@@ -1019,8 +1019,11 @@ class nbody6_cluster:
 						print(RUN_LST_NEW)
 						#command = cclass.Command(RUN_STR_NEW)
 						#command.run(timeout=20000)
-						subprocess.run(RUN_LST_NEW) 
-						rtmp, vtmp, mtmp, ttmp, tunits, munits, runits = self.read_to_npy(force=True, checkT=False)
+						if suppress_restart:
+							print("Restart call suppressed. Have written a restart file in the sim. directory")
+						else:
+							subprocess.run(RUN_LST_NEW) 
+							rtmp, vtmp, mtmp, ttmp, tunits, munits, runits = self.read_to_npy(force=True, checkT=False)
 					
 					iatt+=1
 				if (self.tends[idir]-ttmp)/self.tends[idir] > self.dtjacc and iatt>=3:
@@ -1028,6 +1031,6 @@ class nbody6_cluster:
 			os.chdir(homedir)
 		return None
 
-	def evolve(self, reread=True):
-		self.run_nbody(reread=reread)
+	def evolve(self, reread=True, suppress_restart=True):
+		self.run_nbody(reread=reread, suppress_restart=suppress_restart)
 		self.combine(reread=reread)
