@@ -117,7 +117,8 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 	m = simulation.m
 	print('Encounter analysis...')
 	munits, runits, tunits, vunits = simulation.units_astro
-	t *= tunits
+	munits_SI, runits_SI, tunits_SI  = simulation.units_SI
+	print('G:', 6.67e-11*munits_SI*(tunits_SI**2)/(runits_SI)**3)
 
 	rsep = cdist(r[0], r[0])
 	rsep = rsep[np.triu_indices(len(r[0]),k=1)]
@@ -126,16 +127,6 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 	bins=  np.logspace(-4., 1.5, 25)
 	weights = 1./rsep/rsep
 
-	tind = np.argmin(np.absolute(t-time))
-
-	print(t)
-
-	t = t[:tind+1]
-	r = r[:tind+1]
-	v = v[:tind+1]
-
-	print(t)
-	print(r)
 	print('Not implemented correctly- check units')
 
 	isub= np.arange(len(m))
@@ -169,7 +160,7 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 			print('Scanning encounters for i={2} ({0}/{1})'.format(ict+1, len(isub), istar))
 			if not os.path.isfile(simulation.out+'_enchist_{0}.npy'.format(istar)):
 				print('Generating global encounter history for star {0}... '.format(istar))
-				cx, cv, cm, cn = cc.encounter_history_istar(istar, r, v, m, 4)
+				cx, cv, cm, cn = cc.encounter_history_istar(istar, r, v, m, 2)
 		
 				[plt.plot(t, np.linalg.norm(cx[i], axis=1)*runits ) for i in range(len(cx))]
 				plt.yscale('log')
@@ -210,7 +201,7 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 					icol+=1
 
 				if plotall:
-					plt.xlabel('Time (Myr)')
+					plt.xlabel('Time [Myr]')
 					plt.ylabel('Separation (au)')
 					plt.yscale('log')
 					plt.savefig(simulation.out+'_enchist_{0}.pdf'.format(istar), format='pdf', bbox_inches='tight')
@@ -223,8 +214,8 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 				e_order = e_order[chron]
 				t_order = t_order[chron]
 
-
-				print('Closest encounter: ', np.amin(x_order), m2au, runits)
+				if len(x_order)>0:
+					print('Closest encounter: ', np.amin(x_order), m2au, runits)
 
 
 				np.save(simulation.out+'_enchist_{0}'.format(istar), np.array([x_order, m_order, e_order, t_order]))
@@ -268,9 +259,12 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 				if len(rout_evol)>1:
 					evolve_rall.append(rout_evol)"""
 
-			xmin  = np.amin(x_order)
-			print('Closest encounter for i=%d : %.2e'%(istar, xmin))
-			xmins[ict] = xmin
+			if len(x_order)>0:
+				xmin  = np.amin(x_order)
+				print('Closest encounter for i=%d : %.2e'%(istar, xmin))
+				xmins[ict] = xmin
+			else:
+				xmins[ict]= np.inf
 			ict+=1
 		
 		np.save(simulation.out+'_xmin', xmins)

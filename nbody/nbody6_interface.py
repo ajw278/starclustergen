@@ -305,7 +305,9 @@ class nbody6_cluster:
 		if restart is None:
 			indict['KSTART'] = 1 #1
 		else:
-			indict['KSTART'] = int(2+(restart%3)) #2
+			indict['KSTART'] = int(2+restart) #2
+			if restart>3:
+				raise Exception('Restart %d not valid'%(restart+2))
 			if os.path.isfile('comm.1'):
 				if os.path.isfile('comm.2'):
 					sdate1 = os.path.getmtime('comm.1')
@@ -593,7 +595,7 @@ class nbody6_cluster:
 		elif indict['KSTART']==5:
 			INSTRING = nbody6_template.infile_string_r5(indict)
 
-		if restart==None:
+		if restart is None:
 			instring = self.out
 		else:		
 			instring= self.out+'_restart'+str(restart)
@@ -996,7 +998,8 @@ class nbody6_cluster:
 					tend = self.tends[idir]
 				else:
 					tend = self.tend
-				
+				os.chdir(homedir)
+				return None
 
 				while (tend-ttmp)/tend > 0.05 and iatt<3:		
 					rtmp, vtmp, mtmp, ttmp, tunits, munits, runits = self.read_to_npy(force=reread, checkT=False)
@@ -1012,7 +1015,7 @@ class nbody6_cluster:
 						print('New attempt {0} starting at time {1}'.format(iatt, ttmp))
 						print(self.tends, ttmp)
 						print('T_end = {0}/{1}'.format(ttmp, tend))
-						inname = self.write_to_input(restart=1)
+						inname = self.write_to_input(restart=3)
 
 						RUN_LST_NEW = [NBODYEXE, ' < {0}'.format(inname+'.input'), '> {0}'.format(inname+'.output')]
 						#RUN_STR_NEW =  NBODYEXE + " < {0} > {1}".format(inname+'.input', inname+'.output')

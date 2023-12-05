@@ -35,13 +35,19 @@ def total_kinetic(vstars, mstars):
     ke = np.sum(0.5*mstars*vsq)
     return ke
 
-def encounter_history_istar(istar, rstars, vstars,  mstars, nclose=3):
+
+#from scipy.ndimage import gaussian_filter1d
+
+
+def encounter_history_istar(istar, rstars, vstars,  mstars,nclose=3):
 	
 	#Want rstars in form [star][time][dimension]
+	#rstars = gaussian_filter1d(rstars,1, axis=0)
+	#vstars = gaussian_filter1d(vstars, 1, axis=0)
 	rstars = np.swapaxes(rstars, 0,1)
 	vstars = np.swapaxes(vstars, 0,1)
 
-	nghbr_list = []
+	
 
 	nghbrs = np.zeros((rstars.shape[1], nclose))
 	closest_x = np.zeros((rstars.shape[1], nclose, rstars.shape[2]))
@@ -86,6 +92,75 @@ def encounter_history_istar(istar, rstars, vstars,  mstars, nclose=3):
 	return cx, cv, cm, nblst #closest_x, closest_v, closest_m, nghbrs
 
 
+
+def calc_e_rp(dr, dv, m1, m2, hh, G=1):
+    
+    mu = G * (m1 + m2)
+    a = 1 / (2 / dr - dv * dv / mu)
+    v_infinity = np.sqrt(abs( -mu / a))
+    b = hh / v_infinity
+    ee = np.sqrt(1 - np.sign(a)*b**2 / a**2)
+    rr_p = -a * (ee - 1)
+	#     pp = np.sqrt(abs(4 * np.pi * a**3 / mu))
+    
+    return ee, rr_p
+
+def calc_h(dx, dy, dz, dvx, dvy, dvz):
+    
+    dr = np.array([dx, dy, dz])
+    dv = np.array([dvx, dvy, dvz])
+    
+    hh = np.cross(dr, dv)
+    
+    return np.linalg.norm(hh) 
+
+def get_closeapproach(dr, dv, m1, m2, T, add=1, G=1.0):
+	#Gravitational parameter
+	mu = G*(m1 + m2)
+
+	#Calculate specific angular momentum
+	h = np.cross(dr, dv, axis=-1)
+	drmag = np.linalg.norm(dr, axis=-1)[:,np.newaxis]
+	dvmag = np.linalg.norm(dv, axis=-1)[:,np.newaxis]
+
+	print(drmag.shape, dvmag.shape, h)
+
+	#Calculate eccentricity vector
+	e_vec = (np.cross(dv, h, axis=-1) / mu) - (dr / drmag)
+
+
+	#Calculate eccentricity
+	e = np.linalg.norm(e_vec, axis=-1)
+
+
+	# Calculate specific orbital energy
+	eps = 0.5*(dvmag ** 2)  - (mu / drmag)
+
+	eps = eps.flatten()
+	drmag = drmag.flatten()
+	dvmag = dvmag.flatten()
+
+	# Calculate semi-major axis and the pericentre distance
+	a = -mu / (2 * eps)
+	rp = a*(1.-e)
+
+
+	#Eccentric anomaly
+	print(drmag/a, e)
+	E = np.arccos((1. - np.absolute(drmag/a))/e)
+
+	# Calculate mean motion
+	n = np.sqrt(mu / np.absolute(a)**3)
+
+	# Calculate the mean anomaly
+	M =  e*np.sinh(E) -E
+
+	#Finally, get periastron itme
+	T_peri = T - np.sign(add)*M / n
+
+
+	return e.flatten(), rp.flatten(), T_peri.flatten()
+
 def encounter_params(cx, cv, cm, ct, mstar):
 	diff = np.amin(np.diff(ct))
 
@@ -95,51 +170,40 @@ def encounter_params(cx, cv, cm, ct, mstar):
 
 	import matplotlib.pyplot as plt
 	
-	for ix in range(len(cx)):
-		cxmag = np.apply_along_axis(np.linalg.norm, 1, cx[ix])
-		cvmag = np.apply_along_axis(np.linalg.norm, 1, cv[ix])
-		cvdotx = np.einsum('ij,ij->i', cx[ix], cv[ix])
-		print(cvdotx.shape)
-		local_minima = []
-		for ixmag in range(1,len(cxmag)-1):
-			if cvdotx[ixmag-1]<0.0 and cvdotx[ixmag]>0.0:
-				local_minima.append(ixmag-1)
 
+	cxmag = np.apply_along_axis(np.linalg.norm, 2, cx)
+	cxmagmin = np.amin(cxmag, axis=0)
+	for ix in range(len(cx)):
+
+		cvdotx = np.einsum('ij,ij->i', cx[ix], cv[ix])
+		
+		lm = []
+		for ixmag in range(1,len(cxmag[ix])-1):
+			print(cxmag.shape, cxmagmin.shape)
+			print(cxmag[ix][ixmag], cxmagmin[ixmag])
+			
+			if cxmag[ix][ixmag] == cxmagmin[ixmag]:
+				if cvdotx[ixmag-1]<0.0 and cvdotx[ixmag]>0.0:
+					lm.append(ixmag)
+
+
+		print(lm)
+		print(ct[lm])
 		
 	 	#local_minima = np.array(local_minima)
-		hs = np.cross(cx[ix][local_minima], cv[ix][local_minima])
-		if len(local_minima)>0:
-			hsmag= np.apply_along_axis(np.linalg.norm, 1, hs)
-			mu = cm[ix]+mstar
-			ls = hsmag*hsmag/mu
-			smas = 1./((2./cxmag[local_minima])-(np.power(cvmag[local_minima],2)/mu))
-			eccs = np.sqrt(1.-hsmag*hsmag/(smas*mu))
-			xmins = smas*(1.-eccs)
+		if len(lm)>0:
 
+			#hsmag= np.apply_along_axis(np.linalg.norm, 1, hs)
+			#mu = cm[ix]+mstar
+			#ls = hsmag*hsmag/mu
+			e, rp, tperi = get_closeapproach(cx[ix][lm], cv[ix][lm], mstar,cm[ix], ct[lm])
+			#smas = 1./((2./cxmag[local_minima])-(np.power(cvmag[local_minima],2)/mu))
+			#eccs = np.sqrt(1.-hsmag*hsmag/(smas*mu))
+			#xmins = smas*(1.-eccs)
+			ce_eccs.append(e)
+			ce_x.append(rp)
 
-			times = []
-			idt=0
-			for ivec in local_minima:
-				vr = -np.dot(cx[ix][ivec], cv[ix][ivec])/cxmag[ivec]
-				dt = (cxmag[ivec]-xmins[idt])/vr
-				if np.absolute(dt)>diff/2.:
-					dt = 0.0
-					xmins[idt] = cxmag[ivec]
-
-				times.append(ct[ivec]+dt)
-				if times[idt]<0.0:
-					print('cxmag', cxmag[ivec])
-					print('cxest', xmins[idt])
-					print(smas[idt] )
-					print(eccs[idt])
-					print(vr)
-					print('dt', dt)
-					print('t', ct[ivec])
-				idt+=1
-			ce_eccs.append(eccs)
-			ce_x.append(xmins)
-
-			ce_time.append(np.array(times))
+			ce_time.append(ct[lm])
 		else:
 			
 			ce_eccs.append(np.array([]))

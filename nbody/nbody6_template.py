@@ -46,7 +46,7 @@ def infile_string_r5(indict, mpi=False, KZ_change=None):
 	STRING += "{0} {1} {2} {3} {4} {5}\n".format(indict['DTADJ'], indict['DELTAT'], 0.0, 0.0,indict['TCRIT'],indict['QE'])
 
 	
-	if KZ_change==None:
+	if KZ_change is None:
 		STRING += "{0} {1} \n".format(0, indict['KZ'][0])
 	else:
 		for KZ in KZ_change:
