@@ -352,17 +352,18 @@ def plot_stars_with_velocity(rs, vs, cdim, title=''):
     velocities = vs[cdim, :]
 
     # Create a scatter plot
-    plt.scatter(positions_x, positions_y, c=velocities/1e5, cmap='viridis', marker='o', alpha=0.8)
+    plt.scatter(positions_x, positions_y, c=velocities, cmap='viridis', marker='o', alpha=0.8)
 
     # Add labels and title
-    plt.xlabel(f"Position in Dimension {other_dimensions[0] + 1}")
-    plt.ylabel(f"Position in Dimension {other_dimensions[1] + 1}")
+    plt.xlabel(f"X")
+    plt.ylabel(f"Y")
     plt.title(title)
 
     # Add a colorbar
     cbar = plt.colorbar()
     cbar.set_label('Velocity [km/s]')
 
+    plt.savefig('velocities_initial.pdf', format='pdf', bbox_inches='tight')
     # Show the plot
     plt.show()
 
@@ -537,8 +538,6 @@ if __name__=='__main__':
         ms_all = np.load('sim_ics_m.npy')
         bf, logP, q, e = np.load('sim_ics_bins.npy')
     
-   
-
     """irand = np.random.choice(np.arange(len(rs_all.T)), size=len(rs_all.T), replace=False)
     rs_all[0]  =rs_all[0, irand]
     irand = np.random.choice(np.arange(len(rs_all.T)), size=len(rs_all.T), replace=False)
@@ -555,9 +554,10 @@ if __name__=='__main__':
                 tend_Myr = 3.0, gasparams=None, etai=0.005, etar=0.005, etau=0.01, dtmin_Myr=1e-8, \
                 rmin_pc=1e-4,dtjacc_Myr=0.05, load=True, ctype='smooth', force_incomp = False, \
                     rtrunc=50.0, nbin0=nbins0, aclose_au=200.0)
-    sim.evolve()
+    #sim.evolve()
 
-    cp.encounter_analysis(sim)
+    cp.pairwise_analysis(sim, ndim=2)
     cp.plot_3dpos(sim)
+    cp.encounter_analysis(sim)
     #sim = rb.setupSimulation(rs_all, vs_all*1e5*1e6*year2s/pc2cm, ms_all, units=('Myr', 'pc', 'Msun'))
     #sim.integrate(3.0)
