@@ -57,7 +57,7 @@ sv0 *= mas2rad*distance*pc2cm/year2s
 
 no_hard_edge=True
 minlogP = 5.0
-maxlogP = 10.0
+maxlogP = 8.0
 
 # Define the binary fraction functions
 def f_logP_lt_1(M1):
@@ -84,7 +84,7 @@ def binary_fraction(logP,  M1):
         return f_logP_2_7(M1) + alpha * delta_logP + (logP - 2.7 - delta_logP) / (2.8 - delta_logP) * (
                 f_logP_5_5(M1) - f_logP_2_7(M1) - alpha * delta_logP)
     elif 5.5 <= logP < maxlogP: # or (5.5 <= logP and no_hard_edge):
-        return f_logP_5_5(M1)  #* np.exp(-0.3 * (logP - 5.5))
+        return f_logP_5_5(M1)* np.exp(-0.3 * (logP - 5.5))
     else:
         return 0.0
     
@@ -503,9 +503,13 @@ if __name__=='__main__':
             np.save('rgbox', rs)
         else:
             rs = np.load('rgbox.npy')
+        
+        
+        rs -= np.median(rs, axis=1)
 
         istars = np.arange(rs.shape[1]) 
-        istars = select_istars(rs, 30.0, sharpness=10.0)
+        #istars = select_istars(rs, 30.0, sharpness=10.0)
+        print(istars)
         istars = np.random.choice(istars, size=700, replace=False)
         print(rs.shape)
         rs = rs[:, istars]
