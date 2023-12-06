@@ -107,8 +107,73 @@ def plot_3dpos(simulation, dim=None, save=True, rlim=20.0):
 	
 	create_3d_stars_animation(r_, t_,filename='stars_animation.mp4')
 	
+
+
+def pairwise_analysis(simulation, ndim=2):
+	t = simulation.t
+	r = simulation.r
+	munits, runits, tunits, _ = simulation.units_astro
+
+	t *= tunits
+	r *= runits
+
+	rbins = np.logspace(-4., 1.5, 25)
+
+	# Set up a colormap for coloring by 't'
+	cmap = plt.get_cmap('viridis')
+	norm = plt.Normalize(t.min(), t.max())
+	scalar_map = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+	scalar_map.set_array([])
+
+	for it in range(0, len(t), 10):
+		rsep = cdist(r[it, :, :ndim], r[it, :, :ndim])
+		rsep = rsep[np.triu_indices(len(rsep), k=1)]
+		rsep = rsep.flatten()
+
+		if ndim == 2:
+			weights = 1. / 2. / np.pi / rsep
+		elif ndim == 3:
+			weights = 1. / 4. / np.pi / rsep / rsep
+
+		hist, be = np.histogram(rsep, density=True, bins=rbins, weights=weights)
+		bc = 0.5 * (be[1:] + be[:-1])
+		hist /= np.sum(hist*np.diff(be)*2.*np.pi*bc)
+		# Plotting with color and markers
+		plt.plot(bc, hist, color=scalar_map.to_rgba(t[it]), alpha=0.7)
+		plt.scatter(bc, hist, marker='o', s=20, edgecolors='gray', facecolors='white', linewidths=0.5)
+
+
+	if os.path.isfile('Taurus_distances.npy'):
+		d=140.0
+		au2pc = 4.84814e-6
+		deg2arcsec = 3600.0
+		dtaur = np.load('Taurus_distances.npy')
+		dtaur *= d*au2pc*deg2arcsec
 		
-	
+		weights = 1. / 2. / np.pi / dtaur
+		
+		hist, be = np.histogram(dtaur, density=True, bins=rbins, weights=weights)
+		bc = 0.5 * (be[1:] + be[:-1])
+		hist /= np.sum(hist*np.diff(be)*2.*np.pi*bc)
+		# Plotting with color and markers
+		plt.plot(bc, hist, color='r', linewidth=1)
+		plt.scatter(bc, hist, marker='o', s=20, edgecolors='red', facecolors='white', linewidths=0.5)
+	# Color bar
+	cbar = plt.colorbar(scalar_map, label='Time (t)')
+
+	# Logarithmic Scaling
+	plt.xscale('log')
+	plt.yscale('log')
+
+	# Adding grid
+	plt.grid(True, which='major', linestyle='--', linewidth=0.5)
+
+	# Display
+	plt.xlabel('Pair Separation Distance')
+	plt.ylabel('Pair Distribution Function')
+	plt.show()
+
+
 def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=1000, rmax = None,  time=3.0, plotall=True):
 
 	t = simulation.t

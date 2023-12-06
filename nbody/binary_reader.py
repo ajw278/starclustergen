@@ -561,46 +561,79 @@ class AllBinaries:
 			raise Exception('No star "{0}" found in database'.format(istar))
 			
 
-istars = np.arange(1079)
-allbin = AllBinaries(istars)
-allbin.create_binary_arrays()
+if __name__=='__main__':
+	import nbody6_interface as nbi
+	sim = nbi.nbody6_cluster(np.array([]), np.array([]), np.array([]),  outname='clustersim', load=True, init=False)
+	
+	munit, runit, tunit, vunit = sim.units_astro
+	istars = np.arange(1079)
+	allbin = AllBinaries(istars)
+	#allbin.create_binary_arrays()
+	plt.rc('text', usetex=True)
+	irand = np.random.choice(istars, size=100)
+	fig, ax = plt.subplots(figsize=(5.,4.))
+	for istar in irand:
+		t,bf, ic, a, e, m2 = allbin.get_history(istar)
+		print(t, tunit, a[-1])
+		plt.plot(t*tunit, a, linewidth=1)
+
+	ax.tick_params(axis='both', which='both', bottom=True, top=True, left=True, right=True)
+	plt.yscale('log')
+	plt.xlabel('Time [Myr]')
+	plt.ylabel('Semi-major axis: $a$ [au]')
+	plt.ylim([1., 2e4])
+	plt.savefig('sma_100bin.pdf', format='pdf', bbox_inches='tight')
+	plt.show()
+	
+	fig, ax = plt.subplots(figsize=(5.,4.))
+	for istar in irand:
+		t,bf, ic, a, e, m2 = allbin.get_history(istar)
+		plt.plot(t*tunit, a*(1-e), linewidth=1)
+
+	ax.tick_params(axis='both', which='both', bottom=True, top=True, left=True, right=True)
+	plt.yscale('log')
+	plt.xlabel('Time [Myr]')
+	plt.ylabel('Pericentre distance: $a(1-e)$ [au]')
+	plt.ylim([1., 2e4])
+	plt.savefig('rperi_100bin.pdf', format='pdf', bbox_inches='tight')
+	plt.show()
+	exit()
+
+	wbin_snap = WideBinarySnapshot()
+	wbin_snap.create_database()
+
+	binary_snapshot = BinarySnapshot()
+	binary_snapshot.create_database()  # Create a database with file information
 
 
-wbin_snap = WideBinarySnapshot()
-wbin_snap.create_database()
+	for istar in [39, 41, 43, 45, 47]:
+		star1_dict = wbin_snap.gen_history(istar)
 
-binary_snapshot = BinarySnapshot()
-binary_snapshot.create_database()  # Create a database with file information
+		print(star1_dict['t'])
 
+		plt.plot(star1_dict['t'], star1_dict['semi']*(1.-star1_dict['ecc']))
 
-for istar in [39, 41, 43, 45, 47]:
-	star1_dict = wbin_snap.gen_history(istar)
+	for istar in [17, 99, 139, 175, 197]:
+		star1_dict = binary_snapshot.gen_history(istar)
 
-	print(star1_dict['t'])
+		print(star1_dict['t'])
 
-	plt.plot(star1_dict['t'], star1_dict['semi']*(1.-star1_dict['ecc']))
+		plt.plot(star1_dict['t'], star1_dict['semi']*(1.-star1_dict['ecc']), linestyle='dashed')
+	plt.yscale('log')
+	plt.show()
 
-for istar in [17, 99, 139, 175, 197]:
-	star1_dict = binary_snapshot.gen_history(istar)
+	bsnap = binary_snapshot.search_snapshot('Time[NB]', 0.0)
 
-	print(star1_dict['t'])
+	print(bsnap)
+	import matplotlib.pyplot as plt
+	plt.scatter(np.log10(bsnap['P[Days]']), bsnap['ECC'])
+	plt.show()
+	plt.hist(bsnap['ECC'])
+	plt.show()
+	plt.hist(np.log10(bsnap['P[Days]']))
+	plt.show()
+	plt.hist(np.log10(bsnap['SEMI[AU]']))
+	plt.show()
 
-	plt.plot(star1_dict['t'], star1_dict['semi']*(1.-star1_dict['ecc']), linestyle='dashed')
-plt.yscale('log')
-plt.show()
-
-bsnap = binary_snapshot.search_snapshot('Time[NB]', 0.0)
-
-print(bsnap)
-import matplotlib.pyplot as plt
-plt.scatter(np.log10(bsnap['P[Days]']), bsnap['ECC'])
-plt.show()
-plt.hist(bsnap['ECC'])
-plt.show()
-plt.hist(np.log10(bsnap['P[Days]']))
-plt.show()
-plt.hist(np.log10(bsnap['SEMI[AU]']))
-plt.show()
-
-# Display the pandas DataFrame with header-1 information
-print(binary_snapshot.snapshots_info)
+	# Display the pandas DataFrame with header-1 information
+	print(binary_snapshot.snapshots_info)

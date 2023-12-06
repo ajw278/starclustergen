@@ -28,7 +28,7 @@ import saveload
 #mpl_cols = ['k','b','g','r','orange', 'c', 'm', 'y']
 
 class nbody6_cluster:
-	def __init__(self, rstars_pc, vstars_kms, mstars_msol, outname='clustersim', dtsnap_Myr =1e-1, tend_Myr = 1.0, assoc=None, gasparams=None, etai=0.02, etar=0.02, etau=0.2, dtmin_Myr=5e-7, dtadj_Myr=1.0, rmin_pc=1e-6, dtjacc_Myr=0.05, load=False, ctype='clumpy', force_incomp = False, starinds = None, rtrunc=50.0, nbin0=0, aclose_au=50.0):
+	def __init__(self, rstars_pc, vstars_kms, mstars_msol, outname='clustersim', dtsnap_Myr =1e-1, tend_Myr = 1.0, assoc=None, gasparams=None, etai=0.02, etar=0.02, etau=0.2, dtmin_Myr=5e-7, dtadj_Myr=1.0, rmin_pc=1e-6, dtjacc_Myr=0.05, load=False, ctype='clumpy', force_incomp = False, starinds = None, rtrunc=50.0, nbin0=0, aclose_au=50.0, init=True):
 		self.out = outname
 		self.idir = 0
 		self.ctype = ctype
@@ -38,7 +38,7 @@ class nbody6_cluster:
 			load_succ =False
 
 		self.eclose = 2.4
-		if not load_succ:
+		if not load_succ and init:
 			self.complete=False
 			print('No previous simulation found...')
 
