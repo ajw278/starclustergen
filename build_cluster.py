@@ -57,7 +57,7 @@ sv0 *= mas2rad*distance*pc2cm/year2s
 
 no_hard_edge=True
 minlogP = 5.0
-maxlogP = 8.0
+maxlogP = 9.0
 
 # Define the binary fraction functions
 def f_logP_lt_1(M1):
@@ -84,7 +84,7 @@ def binary_fraction(logP,  M1):
         return f_logP_2_7(M1) + alpha * delta_logP + (logP - 2.7 - delta_logP) / (2.8 - delta_logP) * (
                 f_logP_5_5(M1) - f_logP_2_7(M1) - alpha * delta_logP)
     elif 5.5 <= logP < maxlogP: # or (5.5 <= logP and no_hard_edge):
-        return f_logP_5_5(M1)* np.exp(-0.3 * (logP - 5.5))
+        return f_logP_5_5(M1) #* np.exp(-0.3 * (logP - 5.5))
     else:
         return 0.0
     
@@ -505,7 +505,7 @@ if __name__=='__main__':
             rs = np.load('rgbox.npy')
         
         
-        rs -= np.median(rs, axis=1)
+        rs -= np.median(rs, axis=1)[:, np.newaxis]
 
         istars = np.arange(rs.shape[1]) 
         #istars = select_istars(rs, 30.0, sharpness=10.0)
@@ -554,7 +554,7 @@ if __name__=='__main__':
     print(rs_all.shape, vs_all.shape)
     nbins0 = int(np.sum(bf))
 
-    sim = nbi.nbody6_cluster(rs_all.T, vs_all.T, ms_all,  outname='clustersim', dtsnap_Myr =0.001, \
+    sim = nbi.nbody6_cluster(rs_all.T, vs_all.T, ms_all,  outname='clustersim', dtsnap_Myr =0.0005, \
                 tend_Myr = 3.0, gasparams=None, etai=0.005, etar=0.005, etau=0.01, dtmin_Myr=1e-8, \
                 rmin_pc=1e-4,dtjacc_Myr=0.05, load=True, ctype='smooth', force_incomp = False, \
                     rtrunc=50.0, nbin0=nbins0, aclose_au=200.0)
