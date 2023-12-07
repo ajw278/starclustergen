@@ -565,6 +565,14 @@ if __name__=='__main__':
 	import nbody6_interface as nbi
 	sim = nbi.nbody6_cluster(np.array([]), np.array([]), np.array([]),  outname='clustersim', load=True, init=False)
 	
+
+	wbin_snap = WideBinarySnapshot()
+	wbin_snap.create_database()
+
+	binary_snapshot = BinarySnapshot()
+	binary_snapshot.create_database() 
+
+	
 	munit, runit, tunit, vunit = sim.units_astro
 	istars = np.arange(1079)
 	allbin = AllBinaries(istars)
