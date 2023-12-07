@@ -41,6 +41,8 @@ class nbody6_cluster:
 		if not load_succ and init:
 			self.complete=False
 			print('No previous simulation found...')
+			
+			
 
 			self.etai = etai
 			self.etar = etar
@@ -68,7 +70,6 @@ class nbody6_cluster:
 	
 			self.units_SI = np.array([munit, runit, tunit])
 			self.units_astro = np.array([munit*kg2sol, runit*m2pc, tunit*s2myr, 1e3*runit/tunit])
-			
 			
 			self.ms = mstars
 			self.rs = rstars
@@ -616,7 +617,10 @@ class nbody6_cluster:
 		
 		
 		
-	def read_to_npy(self, full=False, force=False, maxfiles=200, checkQ=False, checkT=True, checkScale=False):
+	def read_to_npy(self, full=False, force=False, checkQ=False, checkT=True, checkScale=False):
+	
+		nmax = int(self.tend)+2
+		print('Searching for nmax = %d snapshots', nmax)
 
 		tunits_ast, munits_ast, runits_ast, vunits_ast = self.units_astro
 
@@ -624,6 +628,7 @@ class nbody6_cluster:
 			stinds =self.starinds[self.idir]
 		else:
 			stinds = np.arange(len(self.ms))
+		
 		
 
 		ms  = self.ms[stinds]
@@ -642,7 +647,7 @@ class nbody6_cluster:
 			files_all = []
 			conf_list = []
 			subconf_list = []
-			for iconf in range(1000):
+			for iconf in range(nmax):
 				files_tmp = glob.glob('conf.3_'+str(iconf)+'.*')
 				
 				if len(files_tmp)>0:
@@ -660,14 +665,15 @@ class nbody6_cluster:
 
 			print('All files:', files_all)
 			print('CWD:', os.getcwd())
-			while(len(files_all))>maxfiles:
-				files_all = files_all[::2]
 			fints = [int(x.split('.')[-1]) for x in files_all]
+			
+			print('Number of times:', len(fints), len(files_all))
 
 
 			rs_all = np.zeros((len(fints), len(stinds) , 3))
 			vs_all = np.zeros((len(fints), len(stinds) , 3))
 			times = np.zeros(len(fints))
+			iname_all  = np.arange(self.n)
 
 			itime = 0
 			for fname in files_all:
@@ -681,23 +687,24 @@ class nbody6_cluster:
 				V = np.reshape(np.fromfile(datfile, dtype=np.float32, count=3*h1[0]), (h1[0],3))
 				POT = np.fromfile(datfile, dtype=np.float32, count=h1[0])
 				NAME = np.fromfile(datfile, dtype=np.int32, count=h1[0])
-
+				
 				NS_arg = (NAME<=self.n)*(NAME>=1)
 				NAME = NAME[NS_arg]
 				X = X[NS_arg]
-				V = V[NS_arg]
+				V = V[NS_arg]	
 				
-
 				NAME -= 1
-
+				
+				inot = ~np.isin(iname_all, NAME)
+				
 				#print(X.shape, h1,h2, h2[1])
 
-
 				times[itime] = h2[1]
-				print('{0}: t={1} Myr'.format(fname, times[itime]*self.units_astro[2]))
-				for iitime in range(itime, len(rs_all)):
-					rs_all[iitime][NAME] =X
-					vs_all[iitime][NAME] =V
+				print('{0}: t={1} Myr ({2})'.format(fname, times[itime]*self.units_astro[2], times[itime]))
+				rs_all[itime, NAME] =X[np.newaxis,:,:]
+				vs_all[itime, NAME] =V[np.newaxis,:,:]
+				rs_all[itime, inot] = np.nan
+				vs_all[itime, inot] = np.nan
 				
 				itime+=1
 
@@ -1022,6 +1029,7 @@ class nbody6_cluster:
 						#command.run(timeout=20000)
 						if suppress_restart:
 							print("Restart call suppressed. Have written a restart file in the sim. directory")
+							iatt = int(1e6)
 						elif reread:
 							rtmp, vtmp, mtmp, ttmp, tunits, munits, runits = self.read_to_npy(force=True, checkT=False)
 						else:
@@ -1029,7 +1037,7 @@ class nbody6_cluster:
 							rtmp, vtmp, mtmp, ttmp, tunits, munits, runits = self.read_to_npy(force=True, checkT=False)
 					
 					iatt+=1
-				if (self.tends[idir]-ttmp)/self.tends[idir] > self.dtjacc and iatt>=3:
+				if (self.tends[idir]-ttmp)/self.tends[idir] > self.dtjacc and iatt>=3 and not suppress_restart:
 					raise Exception('Failure to run for {0} after {1} attempts...'.format(self.dirs[idir], iatt))
 			os.chdir(homedir)
 		return None

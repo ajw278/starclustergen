@@ -100,8 +100,12 @@ class BinarySnapshot:
 			header_1_str = file.readline()
 			header_1 = header_1_str.split()
 			if len(header_1)<13:
+				print(header_1)
 				fpart = int(header_1_str[:4])
-				lpart = int(header_1_str[4:8])
+				try:
+					lpart = int(header_1_str[4:8])
+				except:
+					lpart = -1
 				header_1[0] = fpart
 				header_1.insert(1, lpart)
 			
@@ -164,7 +168,6 @@ class BinarySnapshot:
 			header = file.readline().split()
 			# Read the data into a DataFrame with explicit delimiter
 			data = pd.read_csv(file, delim_whitespace=True, comment='#', names=header)
-		
 		
 		return data
 	
@@ -377,7 +380,6 @@ class WideBinarySnapshot:
 			# Read the data into a DataFrame with explicit delimiter
 			data = pd.read_csv(file, delim_whitespace=True, comment='#', names=header)
 		
-		
 		return data
 	
 	def gen_history(self, istar):
@@ -468,11 +470,11 @@ class AllBinaries:
 			self.save(self.home_dir)
 		
 
-	def save(self, home_dir):
+	def save(self, home_dir, flag=''):
 		os.chdir(home_dir)
 		if not os.path.exists('obj'):
 			os.makedirs('obj')
-		saveload.save_obj(self, self.out+'.allbinaries')
+		saveload.save_obj(self, self.out+flag+'.allbinaries')
 		return None
 
 	def load(self, home_dir):
@@ -496,6 +498,21 @@ class AllBinaries:
 		else:
 			wide_bin_snap = WideBinarySnapshot(fname=self.wide_binary_snapshot_filename)
 		return wide_bin_snap.snapshots_info['Time[NB]'].values
+	
+	def save_snap(self, home_dir, datarr, i):
+		fname = home_dir+'/obj/'+self.out+'_ts_%d'%i
+		if not os.path.exists(home_dir+'/obj'):
+			os.makedirs(home_dir+'/obj')
+		np.save(fname, datarr)
+		return None
+	
+	def load_snap(self, home_dir, i):
+		fname = home_dir+'/obj/'+self.out+'_ts_%d'%i +'.npy'
+		if os.path.exists(fname):
+			datarr = np.load(fname)
+			return datarr
+		
+		return None
 
 	def create_binary_arrays(self):
 		
@@ -512,7 +529,11 @@ class AllBinaries:
 
 		# Loop through times and stars to populate arrays
 		for i, time in enumerate(self.times_wide_binary):
-			if not self.compiled_flag[i]:
+			darr = self.load_snap(self.home_dir, i)
+			if not darr is None:
+				self.bflag[i], self.icomp[i], self.mcomp[i], self.ecc[i], self.semi[i] = darr[:]
+				self.compiled_flag[i] =True
+			elif not self.compiled_flag[i] and False:
 				wbin_data = wide_bin_snap.search_snapshot('Time[NB]', time)
 				bin_data = bin_snap.search_snapshot('Time[NB]', time)
 				
@@ -527,23 +548,25 @@ class AllBinaries:
 						self.mcomp[i, j] = wbin_data.iloc[comp_index]['M(I1)[M*]'] if star_name == wbin_data.iloc[comp_index]['NAME(I1)'] else wbin_data.iloc[comp_index]['M(I2)[M*]']
 						self.ecc[i, j] = wbin_data.iloc[comp_index]['ECC']
 						self.semi[i, j] = wbin_data.iloc[comp_index]['SEMI[AU]']
+					
+					else:
+						is_star_found = np.any(
+							(bin_data['NAME(I1)'] == star_name) | (bin_data['NAME(I2)'] == star_name)
+						)
+						if is_star_found:
+							self.bflag[i, j] = True
+							comp_index = np.where((bin_data['NAME(I1)'] == star_name) | (bin_data['NAME(I2)'] == star_name))[0][0]
+							self.icomp[i, j] = bin_data.iloc[comp_index]['NAME(I1)'] if star_name == bin_data.iloc[comp_index]['NAME(I1)'] else bin_data.iloc[comp_index]['NAME(I2)']
+							self.mcomp[i, j] = bin_data.iloc[comp_index]['M1[M*]'] if star_name == bin_data.iloc[comp_index]['NAME(I1)'] else bin_data.iloc[comp_index]['M2[M*]']
+							self.ecc[i, j] = bin_data.iloc[comp_index]['ECC']
+							self.semi[i, j] = bin_data.iloc[comp_index]['SEMI[AU]']
 
-				for j, star_name in enumerate(self.star_names):
-					is_star_found = np.any(
-						(bin_data['NAME(I1)'] == star_name) | (bin_data['NAME(I2)'] == star_name)
-					)
-					if is_star_found:
-						self.bflag[i, j] = True
-						comp_index = np.where((bin_data['NAME(I1)'] == star_name) | (bin_data['NAME(I2)'] == star_name))[0][0]
-						self.icomp[i, j] = bin_data.iloc[comp_index]['NAME(I1)'] if star_name == bin_data.iloc[comp_index]['NAME(I1)'] else bin_data.iloc[comp_index]['NAME(I2)']
-						self.mcomp[i, j] = bin_data.iloc[comp_index]['M1[M*]'] if star_name == bin_data.iloc[comp_index]['NAME(I1)'] else bin_data.iloc[comp_index]['M2[M*]']
-						self.ecc[i, j] = bin_data.iloc[comp_index]['ECC']
-						self.semi[i, j] = bin_data.iloc[comp_index]['SEMI[AU]']
-
-				
-				self.compiled_flag[i] =True
-				self.save(self.home_dir)
+				darr = np.array([self.bflag[i], self.icomp[i], self.mcomp[i], self.ecc[i], self.semi[i]])
+				self.save_snap(self.home_dir, darr, i)
 				print('Complete for {0}/{1} times'.format(i+1, len(self.times_wide_binary)))
+				self.compiled_flag[i] =True
+		self.save(self.home_dir)
+				
 			
 		return {
 		'bflag': self.bflag,
@@ -571,18 +594,16 @@ if __name__=='__main__':
 
 	binary_snapshot = BinarySnapshot()
 	binary_snapshot.create_database() 
-
 	
 	munit, runit, tunit, vunit = sim.units_astro
-	istars = np.arange(1079)
+	istars = np.arange(1100)
 	allbin = AllBinaries(istars)
-	#allbin.create_binary_arrays()
+	allbin.create_binary_arrays()
 	plt.rc('text', usetex=True)
 	irand = np.random.choice(istars, size=100)
 	fig, ax = plt.subplots(figsize=(5.,4.))
 	for istar in irand:
 		t,bf, ic, a, e, m2 = allbin.get_history(istar)
-		print(t, tunit, a[-1])
 		plt.plot(t*tunit, a, linewidth=1)
 
 	ax.tick_params(axis='both', which='both', bottom=True, top=True, left=True, right=True)

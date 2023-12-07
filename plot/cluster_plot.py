@@ -10,6 +10,9 @@ import plot_utils as cpu
 import numpy as np
 import cluster_calcs as cc
 from scipy.spatial.distance import cdist
+import copy
+from scipy.special import gamma
+
 plt.rc('text', usetex=True)
 plt.rc('text.latex', preamble='\\usepackage{color}')
 
@@ -57,8 +60,89 @@ def resample_times(times, dt):
     print(inc_inds, len(times))
 
     return inc_inds
+    
+def plot_dvNN(positions, velocities, **svparams):
+	# Calculate distances between all pairs of stars
+	distances = cdist(positions, positions)
+	vdistances = cdist(velocities, velocities)
 
-def plot_3dpos(simulation, dim=None, save=True, rlim=20.0):
+	# Set the diagonal elements to a large value (to exclude a star being its own nearest neighbor)
+	np.fill_diagonal(distances, np.inf)
+
+	dist1ct = distances[np.triu_indices(len(distances), k=1)]
+	vdist1ct = vdistances[np.triu_indices(len(distances), k=1)]
+
+
+	# Find the index of the nearest neighbor for each star
+	nearest_neighbors = np.argmin(distances, axis=1)
+	num_stars = len(positions)
+	nearest_neighbor_distances = distances[np.arange(num_stars), nearest_neighbors]
+
+	bins = np.logspace(-1.5, 1.5)
+	# Calculate the magnitude of the difference in velocity between each star and its nearest neighbor
+	velocity_differences = np.linalg.norm(velocities - velocities[nearest_neighbors], axis=1)
+
+	# Create a scatter plot
+	plt.figure(figsize=(8, 6))
+
+	dsp = np.logspace(-2, 1.5, 40)
+	vsp = np.logspace(-2, 1.5, 30)
+	D, V = np.meshgrid(dsp, vsp, indexing='ij')
+
+	sigvs  = sigv_pl(D, **svparams)
+
+	print(sigvs, D)
+
+	if len(svparams)>0:
+		levels = np.arange(-4.0, 0.2, 0.1)
+		pdist = V*V*MB_dist(V*1e5, sigvs, nd=2)
+		pdist /= np.amax(pdist, axis=1)[:, np.newaxis]
+		ctf=plt.contourf(D, V, np.log10(pdist), levels=levels)
+		plt.colorbar(ctf, label='Normalised MB probability: $\log [v g(v)]$')
+
+		rsp = np.logspace(-2, 2.0)
+		plt.plot(rsp, sigv_pl(rsp, **svparams)/1e5, color='r', linewidth=2)
+		plt.scatter(nearest_neighbor_distances, velocity_differences, c='cyan', edgecolor='gray', s=5)
+	else:
+		plt.scatter(nearest_neighbor_distances, velocity_differences, c='k', edgecolor='gray', s=5)
+		
+	# Add labels and title
+
+	plt.yscale('log')
+	plt.xscale('log')
+	plt.title('Magnitude of Velocity Difference to Nearest Neighbor')
+	plt.xlabel('X Position')
+	plt.ylabel('Y Position')
+	plt.xscale('log')
+	plt.yscale('log')
+	plt.xlim([5e-2, 20.])
+	plt.ylim([5e-2, 20.])
+	plt.show()
+
+def MB_dist(v_, sig, nd=3):
+    signd = sig 
+    norm = 0.5*gamma(nd/2.)*(4.*signd*signd)**(nd/2.)
+    return (1./norm) *(v_**(nd-1))* np.exp(-v_*v_/4./signd/signd)
+
+
+def sigv_pl(dr, r0=1.0, p=1., sv0=1.0):
+    return sv0*(dr/r0)**p
+
+def plot_dvNN_fromsim(simulation, time=2.0, **plparams):
+
+	
+	t = simulation.t
+	r = simulation.r
+	v = simulation.v
+	munits, runits, tunits, vunits = simulation.units_astro
+	
+	it = np.argmin(np.absolute(t*tunits - time))
+	
+	plot_dvNN(r[it], v[it], **plparams)
+	
+
+
+def plot_3dpos(simulation, dim=None, save=True, rlim=20.0, dtmin=0.01):
 
 	def update(frame, data, times, sc, time_text):
 		sc._offsets3d = (data[frame, :, 0], data[frame, :, 1], data[frame,:, 2])
@@ -90,17 +174,22 @@ def plot_3dpos(simulation, dim=None, save=True, rlim=20.0):
 		ani.save(filename, writer='ffmpeg', fps=20, dpi=800)
 		plt.show()
 
-	t = simulation.t
-	r = simulation.r
-	m = simulation.m
+	t = copy.copy(simulation.t)
+	r = copy.copy(simulation.r)
+	m = copy.copy(simulation.m)
 	
 	munits, runits, tunits, vunits = simulation.units_astro
 	print(tunits, munits, runits, vunits)
 	print(r.shape)
+	
+	print(t)
+	print(np.median(np.absolute(r[~np.isnan(r)])))
 	r*=runits
 	t*=tunits
-	
-	dtmin = np.amin(np.diff(t))
+	print(t)
+	print(np.median(np.absolute(r[~np.isnan(r)])))
+	if dtmin is None:
+		dtmin = np.amin(np.diff(t))
 	incinds = resample_times(t, dtmin)
 	r_ = r[incinds]
 	t_ = t[incinds]
@@ -110,14 +199,14 @@ def plot_3dpos(simulation, dim=None, save=True, rlim=20.0):
 
 
 def pairwise_analysis(simulation, ndim=2):
-	t = simulation.t
-	r = simulation.r
+	t = copy.copy(simulation.t)
+	r = copy.copy(simulation.r)
 	munits, runits, tunits, _ = simulation.units_astro
 
 	t *= tunits
 	r *= runits
 
-	rbins = np.logspace(-4., 1.5, 25)
+	rbins = np.logspace(-4., 2.0, 25)
 
 	# Set up a colormap for coloring by 't'
 	cmap = plt.get_cmap('viridis')
@@ -125,7 +214,10 @@ def pairwise_analysis(simulation, ndim=2):
 	scalar_map = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
 	scalar_map.set_array([])
 
-	for it in range(0, len(t), 10):
+	nplot=10
+	skip = len(t)//nplot
+	print('Number of times:', len(t))
+	for it in range(0, len(t), skip):
 		rsep = cdist(r[it, :, :ndim], r[it, :, :ndim])
 		rsep = rsep[np.triu_indices(len(rsep), k=1)]
 		rsep = rsep.flatten()
@@ -159,12 +251,14 @@ def pairwise_analysis(simulation, ndim=2):
 		plt.plot(bc, hist, color='r', linewidth=1)
 		plt.scatter(bc, hist, marker='o', s=20, edgecolors='red', facecolors='white', linewidths=0.5)
 	# Color bar
-	cbar = plt.colorbar(scalar_map, label='Time (t)')
+	cbar = plt.colorbar(scalar_map, label='Time (t)',  ax=plt.gca())
 
 	# Logarithmic Scaling
 	plt.xscale('log')
 	plt.yscale('log')
-
+	
+	plt.xlim([1e-4, 50.0])
+	plt.ylim([1e-5, 1e3])
 	# Adding grid
 	plt.grid(True, which='major', linestyle='--', linewidth=0.5)
 
@@ -176,10 +270,10 @@ def pairwise_analysis(simulation, ndim=2):
 
 def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=1000, rmax = None,  time=3.0, plotall=True):
 
-	t = simulation.t
-	r = simulation.r
-	v = simulation.v
-	m = simulation.m
+	t = copy.copy(simulation.t)
+	r = copy.copy(simulation.r)
+	v = copy.copy(simulation.v)
+	m = copy.copy(simulation.m)
 	print('Encounter analysis...')
 	munits, runits, tunits, vunits = simulation.units_astro
 	munits_SI, runits_SI, tunits_SI  = simulation.units_SI
@@ -226,10 +320,6 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 			if not os.path.isfile(simulation.out+'_enchist_{0}.npy'.format(istar)):
 				print('Generating global encounter history for star {0}... '.format(istar))
 				cx, cv, cm, cn = cc.encounter_history_istar(istar, r, v, m, 2)
-		
-				[plt.plot(t, np.linalg.norm(cx[i], axis=1)*runits ) for i in range(len(cx))]
-				plt.yscale('log')
-				plt.show()
 				x_order = np.array([])
 				e_order = np.array([])
 				m_order = np.array([])

@@ -368,59 +368,6 @@ def plot_stars_with_velocity(rs, vs, cdim, title=''):
     plt.show()
 
 
-def plot_dvNN(rs, vs):
-    positions = rs.T
-    velocities = vs.T
-    # Calculate distances between all pairs of stars
-    distances = cdist(positions, positions)
-    vdistances = cdist(velocities, velocities)
-
-    # Set the diagonal elements to a large value (to exclude a star being its own nearest neighbor)
-    np.fill_diagonal(distances, np.inf)
-    
-    dist1ct = distances[np.triu_indices(len(distances), k=1)]
-    vdist1ct = vdistances[np.triu_indices(len(distances), k=1)]
-    
-    irand = np.random.choice(np.arange(len(dist1ct)), size=1000, replace=False)
-    """plt.figure(figsize=(8, 6))
-    plt.scatter(dist1ct[irand], vdist1ct[irand], c='blue', alpha=0.7, edgecolors='none')
-
-    plt.title('Magnitude of Velocity Difference to Neighbours')
-    plt.xlabel('X Position')
-    plt.ylabel('Y Position')
-    plt.xscale('log')
-    plt.yscale('log')
-    plt.show()"""
-
-    # Find the index of the nearest neighbor for each star
-    nearest_neighbors = np.argmin(distances, axis=1)
-    num_stars = len(positions)
-    nearest_neighbor_distances = distances[np.arange(num_stars), nearest_neighbors]
-    
-    weights=1./4./np.pi/nearest_neighbor_distances**2
-
-    weights_d=1./4./np.pi/distances**2
-
-    bins = np.logspace(-4.0, 1.5)
-    plt.hist(distances.flatten(), bins=bins, density=True, histtype='step', weights=weights_d.flatten())
-    plt.hist( nearest_neighbor_distances, bins=bins,density=True, histtype='step', weights=weights)
-    plt.yscale('log')
-    plt.xscale('log')
-    plt.show()
-
-    # Calculate the magnitude of the difference in velocity between each star and its nearest neighbor
-    velocity_differences = np.linalg.norm(velocities - velocities[nearest_neighbors], axis=1)
-
-    # Create a scatter plot
-    plt.figure(figsize=(8, 6))
-    plt.scatter(nearest_neighbor_distances, velocity_differences, c='blue', alpha=0.7, edgecolors='none')
-
-    plt.title('Magnitude of Velocity Difference to Nearest Neighbor')
-    plt.xlabel('X Position')
-    plt.ylabel('Y Position')
-    plt.xscale('log')
-    plt.yscale('log')
-    plt.show()
 
 from mpl_toolkits.mplot3d import Axes3D
 
@@ -463,6 +410,7 @@ def select_istars(rstars, rmax, sharpness=10.0):
     
     
 if __name__=='__main__':
+    
     
     if not os.path.isfile('sim_ics_r.npy') or not os.path.isfile('sim_ics_v.npy') or not os.path.isfile('sim_ics_m.npy'):
         binsep = distance*deg2rad*(10.**-1.5)/1.5
@@ -530,7 +478,7 @@ if __name__=='__main__':
         vs_all /= km2cm
         
         
-        plot_dvNN(rs_all, vs_all)
+        cp.plot_dvNN(rs_all.T, vs_all.T)
         np.save('sim_ics_bins', np.array([bf, logP, q, e]))
         np.save('sim_ics_r', rs_all)
         np.save('sim_ics_v', vs_all)
@@ -554,14 +502,15 @@ if __name__=='__main__':
     print(rs_all.shape, vs_all.shape)
     nbins0 = int(np.sum(bf))
 
-    sim = nbi.nbody6_cluster(rs_all.T, vs_all.T, ms_all,  outname='clustersim', dtsnap_Myr =0.0005, \
+    sim = nbi.nbody6_cluster(rs_all.T, vs_all.T, ms_all,  outname='clustersim', dtsnap_Myr =0.0001, \
                 tend_Myr = 3.0, gasparams=None, etai=0.005, etar=0.005, etau=0.01, dtmin_Myr=1e-8, \
-                rmin_pc=1e-4,dtjacc_Myr=0.05, load=True, ctype='smooth', force_incomp = False, \
+                rmin_pc=1e-8,dtjacc_Myr=0.05, load=True, ctype='smooth', force_incomp = False, \
                     rtrunc=50.0, nbin0=nbins0, aclose_au=200.0)
-    sim.evolve()
+    sim.evolve(reread=False)
 
-    cp.pairwise_analysis(sim, ndim=2)
-    cp.plot_3dpos(sim)
+    #cp.plot_dvNN_fromsim(sim, time=2.0, r0=r0, p=p, sv0=sv0)
+    #cp.pairwise_analysis(sim, ndim=2)
+    #cp.plot_3dpos(sim)
     cp.encounter_analysis(sim)
     #sim = rb.setupSimulation(rs_all, vs_all*1e5*1e6*year2s/pc2cm, ms_all, units=('Myr', 'pc', 'Msun'))
     #sim.integrate(3.0)
