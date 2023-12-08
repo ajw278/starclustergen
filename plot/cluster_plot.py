@@ -348,7 +348,7 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 					print(x_order)
 					if plotall:
 						plt.plot(t*tunits, np.linalg.norm(cx[inghbr], axis=1)*runits, color=mpl_cols[icol%len(mpl_cols)])
-						plt.scatter(np.array(logst[inghbr])*tunits, np.array(logsx[inghbr])*runits, color=mpl_cols[icol%len(mpl_cols)], marker='+')
+						plt.scatter(np.array(logst[inghbr])*tunits, np.array(logsx[inghbr])*runits/au2pc, color=mpl_cols[icol%len(mpl_cols)], marker='+')
 					icol+=1
 
 				if plotall:
@@ -420,7 +420,7 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 		np.save(simulation.out+'_xmin', xmins)
 	else:
 		xmins = np.load(simulation.out+'_xmin.npy')
-		
+
 	"""plt.figure(figsize=(4.,4.))
 	plt.scatter(Rvals, xmins, c='k', s= 3, marker ='+')
 	plt.xscale('log')
@@ -432,8 +432,10 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 	plt.savefig(simulation.out+'_xmins.pdf', format='pdf', bbox_inches='tight')
 	plt.show()"""
 
+	bins = np.logspace(-5., 0, 20)
+
 	plt.figure(figsize=(4.,4.))
-	plt.hist(np.log10(xmins), facecolor='b', density=True, alpha=0.5)
+	plt.hist(np.log10(xmins), facecolor='b', density=True, alpha=0.5, bins=bins)
 	plt.ylabel('Probability density')
 	plt.xlabel('Log closest encounter distance [au]')
 	plt.savefig(simulation.out+'_xminhist.pdf', format='pdf', bbox_inches='tight')
