@@ -203,7 +203,7 @@ def encounter_params(cx, cv, cm, ct, mstar):
 					etmp[ienc] = e[ienc]
 					xtmp[ienc] = rp[ienc]
 				else:
-					ttmp[ienc] = ct[lm[ienc]]s
+					ttmp[ienc] = ct[lm[ienc]]
 					etmp[ienc] = e[ienc]
 					xtmp[ienc] = cxmag[ix][lm[ienc]]
 			ce_x.append(xtmp)
