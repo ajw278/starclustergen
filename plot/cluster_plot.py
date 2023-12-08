@@ -61,7 +61,10 @@ def resample_times(times, dt):
 
     return inc_inds
     
-def plot_dvNN(positions, velocities, **svparams):
+def plot_dvNN(r, v, ndim=2, **svparams):
+	
+	positions  = r[:, :ndim]
+	velocities = v[:, :ndim]
 	# Calculate distances between all pairs of stars
 	distances = cdist(positions, positions)
 	vdistances = cdist(velocities, velocities)
@@ -83,7 +86,7 @@ def plot_dvNN(positions, velocities, **svparams):
 	velocity_differences = np.linalg.norm(velocities - velocities[nearest_neighbors], axis=1)
 
 	# Create a scatter plot
-	plt.figure(figsize=(8, 6))
+	fig, ax = plt.subplots(figsize=(8, 6))
 
 	dsp = np.logspace(-2, 1.5, 40)
 	vsp = np.logspace(-2, 1.5, 30)
@@ -100,7 +103,7 @@ def plot_dvNN(positions, velocities, **svparams):
 		ctf=plt.contourf(D, V, np.log10(pdist), levels=levels)
 		plt.colorbar(ctf, label='Normalised MB probability: $\log [v g(v)]$')
 
-		rsp = np.logspace(-2, 2.0)
+		rsp = np.logspace(-4, 2.0, 40)
 		plt.plot(rsp, sigv_pl(rsp, **svparams)/1e5, color='r', linewidth=2)
 		plt.scatter(nearest_neighbor_distances, velocity_differences, c='cyan', edgecolor='gray', s=5)
 	else:
@@ -108,15 +111,18 @@ def plot_dvNN(positions, velocities, **svparams):
 		
 	# Add labels and title
 
+	ax.tick_params(which='both', axis='both', right=True, top=True, left=True, bottom=True)
+
 	plt.yscale('log')
 	plt.xscale('log')
-	plt.title('Magnitude of Velocity Difference to Nearest Neighbor')
-	plt.xlabel('X Position')
-	plt.ylabel('Y Position')
+	plt.xlabel('%dD separation: $\Delta r$ [pc]'%ndim)
+	plt.ylabel('%dD velocity difference: $\Delta v$ [km/s]'%ndim)
 	plt.xscale('log')
 	plt.yscale('log')
-	plt.xlim([5e-2, 20.])
-	plt.ylim([5e-2, 20.])
+	plt.xlim([1e-2, 10.])
+	plt.ylim([2e-2, 5.])
+	plt.savefig('vdist_%dD.pdf'%ndim, bbox_inches='tight', format='pdf')
+
 	plt.show()
 
 def MB_dist(v_, sig, nd=3):
@@ -125,8 +131,11 @@ def MB_dist(v_, sig, nd=3):
     return (1./norm) *(v_**(nd-1))* np.exp(-v_*v_/4./signd/signd)
 
 
+def svkep(dr):
+	return 2933.0*np.sqrt(1./dr)
+
 def sigv_pl(dr, r0=1.0, p=1., sv0=1.0):
-    return sv0*(dr/r0)**p
+    return np.sqrt((sv0*(dr/r0)**p)**2+ svkep(dr)**2)
 
 def plot_dvNN_fromsim(simulation, time=2.0, **plparams):
 
@@ -214,6 +223,7 @@ def pairwise_analysis(simulation, ndim=2):
 	scalar_map = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
 	scalar_map.set_array([])
 
+	fig, ax = plt.subplots(figsize=(5.,4.))
 	nplot=10
 	skip = len(t)//nplot
 	print('Number of times:', len(t))
@@ -248,7 +258,7 @@ def pairwise_analysis(simulation, ndim=2):
 		bc = 0.5 * (be[1:] + be[:-1])
 		hist /= np.sum(hist*np.diff(be)*2.*np.pi*bc)
 		# Plotting with color and markers
-		plt.plot(bc, hist, color='r', linewidth=1)
+		plt.plot(bc, hist, color='r', linewidth=1, label='Taurus (observed)')
 		plt.scatter(bc, hist, marker='o', s=20, edgecolors='red', facecolors='white', linewidths=0.5)
 	# Color bar
 	cbar = plt.colorbar(scalar_map, label='Time (t)',  ax=plt.gca())
@@ -262,9 +272,12 @@ def pairwise_analysis(simulation, ndim=2):
 	# Adding grid
 	plt.grid(True, which='major', linestyle='--', linewidth=0.5)
 
+	ax.tick_params(which='both', axis='both', left=True, right=True, bottom=True, top=True)
 	# Display
 	plt.xlabel('Pair Separation Distance')
 	plt.ylabel('Pair Distribution Function')
+	plt.legend(loc='best')
+	plt.savefig('pairwise_separation.pdf', bbox_inches='tight', format='pdf')
 	plt.show()
 
 
@@ -288,19 +301,7 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 
 	print('Not implemented correctly- check units')
 
-	isub= np.arange(len(m))
-
-	if  not rmax is None:
-		rmag = np.linalg.norm(r[tind],axis=1)*runits
-		isub = isub[np.where(rmag<rmax)[0]]
-		if len(isub)>subset:
-			isub = np.random.choice(isub, size=subset, replace=False)
-
-	
-	if os.path.isfile(simulation.out+'_encsubset.npy'):
-		isub = np.array(np.load(simulation.out+'_encsubset.npy'), dtype=int)
-	else:
-		np.save(simulation.out+'_encsubset', isub)
+	isub = np.arange(len(m))
 
 	isub = np.sort(isub)
 
@@ -326,8 +327,6 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 				t_order = np.array([])
 
 				print('Obtaining neighbour lists for star {0}.'.format(istar))
-
-				
 			
 				logsx, logse, logst = cc.encounter_params(np.array(cx), np.array(cv), np.array(cm), t, float(m[istar]))
 				icol=0
@@ -337,13 +336,10 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 
 				print('Organising neighbour interactions...')
 				print('Number of neighbours:', cn)
-				print(logsx)
 				for inghbr in range(len(cn)):
 					all_x = np.append(all_x, logsx[inghbr])
 					all_e = np.append(all_e, logse[inghbr])
 
-					print(inghbr, logsx[inghbr])
-				
 					x_order= np.append(x_order, logsx[inghbr]*runits) 
 					e_order= np.append(e_order, logse[inghbr]) 
 					t_order = np.append(t_order, logst[inghbr]*tunits) 
@@ -361,7 +357,6 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 					plt.yscale('log')
 					plt.savefig(simulation.out+'_enchist_{0}.pdf'.format(istar), format='pdf', bbox_inches='tight')
 					plt.show()
-				print('HERE')
 				print(x_order,t_order, e_order)
 				chron = np.argsort(t_order)
 				x_order = x_order[chron]
