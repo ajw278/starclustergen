@@ -203,9 +203,9 @@ def encounter_params(cx, cv, cm, ct, mstar):
 					etmp[ienc] = e[ienc]
 					xtmp[ienc] = rp[ienc]
 				else:
-					ttmp[ienc] = ct[lm[ienc]]
+					ttmp[ienc] = ct[lm[ienc]]s
 					etmp[ienc] = e[ienc]
-					xtmp[ienc] = cx[ix][lm[ienc]]
+					xtmp[ienc] = cxmag[ix][lm[ienc]]
 			ce_x.append(xtmp)
 			ce_eccs.append(etmp)
 			ce_time.append(ttmp)
