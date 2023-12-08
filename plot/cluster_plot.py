@@ -420,8 +420,7 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 		np.save(simulation.out+'_xmin', xmins)
 	else:
 		xmins = np.load(simulation.out+'_xmin.npy')
-
-	Rvals = np.linalg.norm(r[tind,isub,:2], axis=1)*runits*m2pc
+		
 	"""plt.figure(figsize=(4.,4.))
 	plt.scatter(Rvals, xmins, c='k', s= 3, marker ='+')
 	plt.xscale('log')

@@ -168,9 +168,6 @@ def encounter_params(cx, cv, cm, ct, mstar):
 	ce_x = []
 	ce_time = []
 
-	import matplotlib.pyplot as plt
-	
-
 	cxmag = np.apply_along_axis(np.linalg.norm, 2, cx)
 	cxmagmin = np.amin(cxmag, axis=0)
 	for ix in range(len(cx)):
