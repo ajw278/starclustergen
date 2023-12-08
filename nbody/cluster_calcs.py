@@ -196,15 +196,16 @@ def encounter_params(cx, cv, cm, ct, mstar):
 			#mu = cm[ix]+mstar
 			#ls = hsmag*hsmag/mu
 			e, rp, dtperi = get_closeapproach(cx[ix][lm], cv[ix][lm], mstar,cm[ix],0.0)
+
 			for ienc, dt in enumerate(dts):
 				if dtperi[ienc]<dt:
 					ttmp[ienc] = ct[lm[ienc]]+dtperi[ienc]
 					etmp[ienc] = e[ienc]
-					ce_x[ienc] = rp[ienc]
+					xtmp[ienc] = rp[ienc]
 				else:
 					ttmp[ienc] = ct[lm[ienc]]
 					etmp[ienc] = e[ienc]
-					ce_x[ienc] = cx[ix][lm[ienc]]
+					xtmp[ienc] = cx[ix][lm[ienc]]
 			ce_x.append(xtmp)
 			ce_eccs.append(etmp)
 			ce_time.append(ttmp)
