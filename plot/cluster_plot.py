@@ -353,7 +353,7 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 
 				if plotall:
 					plt.xlabel('Time [Myr]')
-					plt.ylabel('Separation (au)')
+					plt.ylabel('Separation [au]')
 					plt.yscale('log')
 					plt.savefig(simulation.out+'_enchist_{0}.pdf'.format(istar), format='pdf', bbox_inches='tight')
 					plt.show()
