@@ -198,7 +198,7 @@ def encounter_params(cx, cv, cm, ct, mstar):
 			e, rp, dtperi = get_closeapproach(cx[ix][lm], cv[ix][lm], mstar,cm[ix],0.0)
 
 			for ienc, dt in enumerate(dts):
-				if dtperi[ienc]<dt:
+				if dtperi[ienc]<dt and dtperi>0.0:
 					ttmp[ienc] = ct[lm[ienc]]+dtperi[ienc]
 					etmp[ienc] = e[ienc]
 					xtmp[ienc] = rp[ienc]
