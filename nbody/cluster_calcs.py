@@ -178,37 +178,40 @@ def encounter_params(cx, cv, cm, ct, mstar):
 		cvdotx = np.einsum('ij,ij->i', cx[ix], cv[ix])
 		
 		lm = []
+		dts = []
 		for ixmag in range(1,len(cxmag[ix])-1):
-			print(cxmag.shape, cxmagmin.shape)
-			print(cxmag[ix][ixmag], cxmagmin[ixmag])
 			
 			if cxmag[ix][ixmag] == cxmagmin[ixmag]:
 				if cvdotx[ixmag-1]<0.0 and cvdotx[ixmag]>0.0:
-					lm.append(ixmag)
+					lm.append(ixmag-1)
+					dts.append(ct[ixmag]-ct[ixmag-1])
 
-
-		print(lm)
-		print(ct[lm])
-		
 	 	#local_minima = np.array(local_minima)
 		if len(lm)>0:
+			xtmp = np.zeros(len(lm))
+			etmp = np.zeros(xtmp.shape)
+			ttmp = np.zeros(xtmp.shape)
 
 			#hsmag= np.apply_along_axis(np.linalg.norm, 1, hs)
 			#mu = cm[ix]+mstar
 			#ls = hsmag*hsmag/mu
-			e, rp, tperi = get_closeapproach(cx[ix][lm], cv[ix][lm], mstar,cm[ix], ct[lm])
-			#smas = 1./((2./cxmag[local_minima])-(np.power(cvmag[local_minima],2)/mu))
-			#eccs = np.sqrt(1.-hsmag*hsmag/(smas*mu))
-			#xmins = smas*(1.-eccs)
-			ce_eccs.append(e)
-			ce_x.append(rp)
-
-			ce_time.append(ct[lm])
+			e, rp, dtperi = get_closeapproach(cx[ix][lm], cv[ix][lm], mstar,cm[ix],0.0)
+			for ienc, dt in enumerate(dts):
+				if dtperi[ienc]<dt:
+					ttmp[ienc] = ct[lm[ienc]]+dtperi[ienc]
+					etmp[ienc] = e[ienc]
+					ce_x[ienc] = rp[ienc]
+				else:
+					ttmp[ienc] = ct[lm[ienc]]
+					etmp[ienc] = e[ienc]
+					ce_x[ienc] = cx[ix][lm[ienc]]
+			ce_x.append(xtmp)
+			ce_eccs.append(etmp)
+			ce_time.append(ttmp)
 		else:
 			
 			ce_eccs.append(np.array([]))
 			ce_x.append(np.array([]))
-
 			ce_time.append(np.array([]))
 			
 		
