@@ -288,8 +288,8 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 	v = copy.copy(simulation.v)
 	m = copy.copy(simulation.m)
 	print('Encounter analysis...')
-	munits, runits, tunits, vunits = simulation.units_astro
-	munits_SI, runits_SI, tunits_SI  = simulation.units_SI
+	munits, runits, tunits, vunits = copy.copy(simulation.units_astro)
+	munits_SI, runits_SI, tunits_SI  = copy.copy(simulation.units_SI)
 	print('G:', 6.67e-11*munits_SI*(tunits_SI**2)/(runits_SI)**3)
 
 	rsep = cdist(r[0], r[0])
@@ -347,7 +347,7 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 
 					print(x_order)
 					if plotall:
-						plt.plot(t*tunits, np.linalg.norm(cx[inghbr], axis=1)*runits, color=mpl_cols[icol%len(mpl_cols)])
+						plt.plot(t*tunits, np.linalg.norm(cx[inghbr], axis=1)*runits/au2pc, color=mpl_cols[icol%len(mpl_cols)])
 						plt.scatter(np.array(logst[inghbr])*tunits, np.array(logsx[inghbr])*runits/au2pc, color=mpl_cols[icol%len(mpl_cols)], marker='+')
 					icol+=1
 
