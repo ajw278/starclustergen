@@ -37,7 +37,7 @@ class nbody6_cluster:
 		else:
 			load_succ =False
 
-		self.eclose = 2.4
+		print('Loaded...')
 		if not load_succ and init:
 			self.complete=False
 			print('No previous simulation found...')
@@ -229,16 +229,14 @@ class nbody6_cluster:
 		return None
 
 	def load(self):
-
-		if os.path.exists('obj/'+self.out+'.sim.pkl'):
-
+		try:
 			oldclass = saveload.load_obj(self.out+'.sim')
 			oldprops = oldclass.__dict__ 
 			for okey in oldprops:
 				setattr(self, okey, getattr(oldclass,okey))
 			
 			return True
-		else:
+		except:
 			return False
 
 	def adjust_dt(self, min_snaps=None):

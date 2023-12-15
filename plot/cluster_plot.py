@@ -12,6 +12,7 @@ import cluster_calcs as cc
 from scipy.spatial.distance import cdist
 import copy
 from scipy.special import gamma
+import binary_reader as bread
 
 plt.rc('text', usetex=True)
 plt.rc('text.latex', preamble='\\usepackage{color}')
@@ -283,10 +284,11 @@ def pairwise_analysis(simulation, ndim=2):
 
 def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=1000, rmax = None,  time=3.0, plotall=True):
 
-	t = copy.copy(simulation.t)
-	r = copy.copy(simulation.r)
-	v = copy.copy(simulation.v)
-	m = copy.copy(simulation.m)
+	print('Copying simulation arrays (may take time if they are large...)')
+	t = simulation.t
+	r =simulation.r
+	v =simulation.v
+	m = simulation.m
 	print('Encounter analysis...')
 	munits, runits, tunits, vunits = copy.copy(simulation.units_astro)
 	munits_SI, runits_SI, tunits_SI  = copy.copy(simulation.units_SI)
@@ -296,10 +298,12 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 	rsep = rsep[np.triu_indices(len(r[0]),k=1)]
 	rsep = rsep.flatten()
 
-	bins=  np.logspace(-4., 1.5, 25)
-	weights = 1./rsep/rsep
 
-	print('Not implemented correctly- check units')
+	#istars = np.arange(1100)
+	#allbin = bread.AllBinaries(istars)
+	#allbin.create_binary_arrays()
+
+	bins=  np.logspace(-4., 1.5, 25)
 
 	isub = np.arange(len(m))
 
@@ -314,13 +318,15 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 	
 
 	if not os.path.isfile(simulation.out+'_xmin.npy'):
+		print('Finding close encounters...')
 		xmins = np.zeros(len(isub))
 		ict=0
-		for istar in isub:
+		for istar in isub[::-1]:
 			print('Scanning encounters for i={2} ({0}/{1})'.format(ict+1, len(isub), istar))
 			if not os.path.isfile(simulation.out+'_enchist_{0}.npy'.format(istar)):
 				print('Generating global encounter history for star {0}... '.format(istar))
 				cx, cv, cm, cn = cc.encounter_history_istar(istar, r, v, m, 2)
+				cxb, cvb, cmb = cc.binary_filter(cx, cv, cm)
 				x_order = np.array([])
 				e_order = np.array([])
 				m_order = np.array([])
@@ -328,7 +334,8 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 
 				print('Obtaining neighbour lists for star {0}.'.format(istar))
 			
-				logsx, logse, logst = cc.encounter_params(np.array(cx), np.array(cv), np.array(cm), t, float(m[istar]))
+				#logsx_s, logse_s, logst_s = cc.encounter_params(np.array(cx), np.array(cv), np.array(cm), t, float(m[istar]))
+				logsx, logse, logst = cc.encounter_params(np.array(cxb), np.array(cvb), np.array(cmb), t, float(m[istar]))
 				icol=0
 				
 				if plotall:
@@ -347,7 +354,8 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 
 					print(x_order)
 					if plotall:
-						plt.plot(t*tunits, np.linalg.norm(cx[inghbr], axis=1)*runits/au2pc, color=mpl_cols[icol%len(mpl_cols)])
+						plt.plot(t*tunits, np.linalg.norm(cx[inghbr], axis=1)*runits/au2pc, color=mpl_cols[icol%len(mpl_cols)], linewidth=2)
+						plt.plot(t*tunits, np.linalg.norm(cxb[inghbr], axis=1)*runits/au2pc, linestyle='dashed', color='r', linewidth=1)
 						plt.scatter(np.array(logst[inghbr])*tunits, np.array(logsx[inghbr])*runits/au2pc, color=mpl_cols[icol%len(mpl_cols)], marker='+')
 					icol+=1
 
@@ -356,7 +364,7 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 					plt.ylabel('Separation [au]')
 					plt.yscale('log')
 					plt.savefig(simulation.out+'_enchist_{0}.pdf'.format(istar), format='pdf', bbox_inches='tight')
-					plt.show()
+					plt.close()
 				print(x_order,t_order, e_order)
 				chron = np.argsort(t_order)
 				x_order = x_order[chron]

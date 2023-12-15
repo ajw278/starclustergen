@@ -1,4 +1,4 @@
-
+import copy
 import numpy as np
 import scipy.spatial as spatial
 
@@ -36,62 +36,59 @@ def total_kinetic(vstars, mstars):
     return ke
 
 
-#from scipy.ndimage import gaussian_filter1d
-
+def binary_sma(r1, r2, v1, v2, m1,m2, G=1.0):
+	dr = r1-r2
+	dv = v1-v2
+	mu = m1+m2
+	pot = G*mu/np.linalg.norm(dr, axis=-1)
+	kin = 0.5*np.linalg.norm(dv, axis=-1)**2
+	eps =  kin - pot
+	return -mu/2./eps
 
 def encounter_history_istar(istar, rstars, vstars,  mstars,nclose=3):
+
+	istar=  np.atleast_1d(istar)
+
+	drstars = rstars - rstars[:, istar]
+	dvstars = vstars - vstars[:, istar]
+
+	drmags = np.linalg.norm(drstars, axis=-1)
+
+	ninds = np.argsort(drmags, axis=1)[:, 1:nclose+1]
+	nblst = np.unique(ninds)
+
+	cx = np.swapaxes(drstars[:, nblst], 0,1)
+	cv = np.swapaxes(dvstars[:, nblst],0,1)
+	cm = mstars[nblst]
 	
-	#Want rstars in form [star][time][dimension]
-	#rstars = gaussian_filter1d(rstars,1, axis=0)
-	#vstars = gaussian_filter1d(vstars, 1, axis=0)
-	rstars = np.swapaxes(rstars, 0,1)
-	vstars = np.swapaxes(vstars, 0,1)
+	return cx, cv, cm, nblst 
 
+def binary_filter(cx, cv, cm, sepfilt=0.1, G=1.0):
+	print(cx.shape)
+	cx_alt = copy.copy(cx)
+	cv_alt = copy.copy(cv)
+	cx_mag = np.linalg.norm(cx, axis=-1)
+	cm_alt = copy.copy(cm)
+
+	for j_s in range(len(cx)-1):
+		for i_s in range(j_s+1, len(cx)):
+			abin = binary_sma(cx[j_s], cx[i_s], cv[j_s], cv[i_s], cm[j_s],cm[i_s], G=G)
+			ifilt = (abin>0.0)&(abin<sepfilt*cx_mag[j_s])
+			bcm = (cm[j_s]+cm[i_s])
+			bcx = (cx[j_s]*cm[j_s] + cx[i_s]*cm[i_s])/bcm
+			bcv = (cv[j_s]*cm[j_s] + cv[i_s]*cm[i_s])/bcm
+			print(np.where(ifilt), cx.shape, bcx.shape)
+			if np.sum(ifilt)>0:
+				cx_alt[j_s, ifilt] = bcx[ifilt]
+				cx_alt[i_s, ifilt] = np.inf
+				cv_alt[j_s, ifilt] = bcv[ifilt]
+				cv_alt[i_s, ifilt] = np.inf
+				cm_alt[j_s ] = cm[i_s]+cm[j_s]
 	
-
-	nghbrs = np.zeros((rstars.shape[1], nclose))
-	closest_x = np.zeros((rstars.shape[1], nclose, rstars.shape[2]))
-	closest_v = np.zeros((rstars.shape[1], nclose, rstars.shape[2]))
-	closest_m = np.zeros((rstars.shape[1], nclose))
-
-	cx = []
-	cv = []
-	cm = []
+	return cx_alt, cv_alt, cm_alt
 
 
-	drstars = rstars - rstars[istar]
-	dvstars = vstars - vstars[istar]
-	drmags = np.linalg.norm(drstars, axis=2)
-
-	drstars = np.swapaxes(drstars, 0,1)
-	dvstars = np.swapaxes(dvstars, 0,1)
-	drmags = np.swapaxes(drmags, 0,1)
-
-	nblst = []
-	
-	for itime in range(len(drmags)):
-		ninds = np.argsort(drmags[itime])[1:nclose+1]
-		for nb in ninds:
-			if not (nb in nblst):
-				nblst.append(nb)
-		nghbrs[itime] = ninds
-		closest_x[itime] = drstars[itime][ninds]
-		closest_v[itime] = dvstars[itime][ninds]
-		closest_m[itime] = mstars[ninds]
-
-	for nb in nblst:
-		#[star][time][dimension] -> time, star, dim
-		cxval = np.swapaxes(drstars,0,1)[nb]
-		cx.append(cxval)
-		cv.append(np.swapaxes(dvstars,0,1)[nb])
-		cm.append(mstars[nb])
-
-	cx = np.array(cx)
-	cv = np.array(cv)
-	
-	return cx, cv, cm, nblst #closest_x, closest_v, closest_m, nghbrs
-
-
+				
 
 def calc_e_rp(dr, dv, m1, m2, hh, G=1):
     
