@@ -282,6 +282,70 @@ def pairwise_analysis(simulation, ndim=2):
 	plt.show()
 
 
+def encounter_analysis_binaries(simulation):
+
+	wbin_snap = bread.WideBinarySnapshot()
+	wbin_snap.create_database()
+
+	binary_snapshot = bread.BinarySnapshot()
+	binary_snapshot.create_database() 
+	
+	munit, runit, tunit, vunit = simulation.units_astro
+
+	istars = np.arange(1100)
+	allbin = AllBinaries(istars)
+	allbin.create_binary_arrays()
+
+	m = simulation.m
+
+	isub = np.arange(len(m))
+
+	isub = np.sort(isub)
+	for istar in isub:
+		t,bf, ic, a, e, m2 = allbin.get_history(istar)
+		dt = np.gradient(t)
+		period = np.sqrt(4.*np.pi*np.pi*(a*au2pc/runit)**3/(G*(m[isub]+m2/munit)))
+		prob_enc = dt/period
+		prob_enc[np.isnan(prob_enc)] = 0.0
+		urand = np.random.uniform(size=t.shape)
+		iienc = urand<prob_enc
+		tenc = t[iienc]
+		eenc = e[iienc]
+		rpenc = a[iienc]*(1.-e[iienc])
+		menc = m2[iienc]/munit
+		np.save(simulation.out+'_enchist_binaries_{0}'.format(istar), np.array([rpenc, menc, eenc, tenc]))
+
+
+def compare_encanalysis(simulation, istars):
+
+	munits, runits, tunits, vunits = copy.copy(simulation.units_astro)
+	icol = 0
+	for ist in istars:
+		
+		x_order, m_order, e_order, t_order = np.load(simulation.out+'_enchist_{0}.npy'.format(ist))
+		x_order_b, m_order_b, e_order_b, t_order_b = np.load(simulation.out+'_enchist_binaries_{0}.npy'.format(ist))
+		plt.scatter(t_order*tunits, x_order*runits/au2pc, color=mpl_cols[icol%len(mpl_cols)], marker='+')
+		plt.scatter(t_order_b*tunits, x_order_b*runits/au2pc, color=mpl_cols[icol%len(mpl_cols)], marker='^')
+
+		icol+=1
+	plt.yscale('log')
+	plt.show()
+
+
+	munits, runits, tunits, vunits = copy.copy(simulation.units_astro)
+	icol = 0
+	for ist in istars:
+		
+		x_order, m_order, e_order, t_order = np.load(simulation.out+'_enchist_{0}.npy'.format(ist))
+		x_order_b, m_order_b, e_order_b, t_order_b = np.load(simulation.out+'_enchist_binaries_{0}.npy'.format(ist))
+		plt.scatter(t_order*tunits, e_order, color=mpl_cols[icol%len(mpl_cols)], marker='+')
+		plt.scatter(t_order_b*tunits, e_order, color=mpl_cols[icol%len(mpl_cols)], marker='^')
+
+		icol+=1
+	
+	plt.show()
+		
+
 def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=1000, rmax = None,  time=3.0, plotall=True):
 
 	print('Copying simulation arrays (may take time if they are large...)')
@@ -315,148 +379,112 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 	evolve_rall = []
 
 	print('Starting encounter analysis...')
-	
 
-	if not os.path.isfile(simulation.out+'_xmin.npy'):
-		print('Finding close encounters...')
-		xmins = np.zeros(len(isub))
-		ict=0
-		for istar in isub[::-1]:
-			print('Scanning encounters for i={2} ({0}/{1})'.format(ict+1, len(isub), istar))
-			if not os.path.isfile(simulation.out+'_enchist_{0}.npy'.format(istar)):
-				print('Generating global encounter history for star {0}... '.format(istar))
-				cx, cv, cm, cn = cc.encounter_history_istar(istar, r, v, m, 2)
-				cxb, cvb, cmb = cc.binary_filter(cx, cv, cm)
-				x_order = np.array([])
-				e_order = np.array([])
-				m_order = np.array([])
-				t_order = np.array([])
+	print('Finding close encounters...')
+	xmins = np.zeros(len(isub))
+	ict=0
+	for istar in isub[::-1]:
+		print('Scanning encounters for i={2} ({0}/{1})'.format(ict+1, len(isub), istar))
+		if not os.path.isfile(simulation.out+'_enchist_{0}.npy'.format(istar)):
+			print('Generating global encounter history for star {0}... '.format(istar))
+			cx, cv, cm, cn = cc.encounter_history_istar(istar, r, v, m, 2)
+			cxb, cvb, cmb = cc.binary_filter(cx, cv, cm)
+			x_order = np.array([])
+			e_order = np.array([])
+			m_order = np.array([])
+			t_order = np.array([])
 
-				print('Obtaining neighbour lists for star {0}.'.format(istar))
+			print('Obtaining neighbour lists for star {0}.'.format(istar))
+		
+			#logsx_s, logse_s, logst_s = cc.encounter_params(np.array(cx), np.array(cv), np.array(cm), t, float(m[istar]))
+			logsx, logse, logst = cc.encounter_params(np.array(cxb), np.array(cvb), np.array(cmb), t, float(m[istar]))
+			icol=0
 			
-				#logsx_s, logse_s, logst_s = cc.encounter_params(np.array(cx), np.array(cv), np.array(cm), t, float(m[istar]))
-				logsx, logse, logst = cc.encounter_params(np.array(cxb), np.array(cvb), np.array(cmb), t, float(m[istar]))
-				icol=0
-				
-				if plotall:
-					plt.figure(figsize=(4.,4.))
+			if plotall:
+				plt.figure(figsize=(4.,4.))
 
-				print('Organising neighbour interactions...')
-				print('Number of neighbours:', cn)
-				for inghbr in range(len(cn)):
-					all_x = np.append(all_x, logsx[inghbr])
-					all_e = np.append(all_e, logse[inghbr])
+			print('Organising neighbour interactions...')
+			print('Number of neighbours:', cn)
+			for inghbr in range(len(cn)):
+				all_x = np.append(all_x, logsx[inghbr])
+				all_e = np.append(all_e, logse[inghbr])
 
-					x_order= np.append(x_order, logsx[inghbr]*runits) 
-					e_order= np.append(e_order, logse[inghbr]) 
-					t_order = np.append(t_order, logst[inghbr]*tunits) 
-					m_order = np.append(m_order, np.ones(len(logsx[inghbr]))*cm[inghbr])
-
-					print(x_order)
-					if plotall:
-						plt.plot(t*tunits, np.linalg.norm(cx[inghbr], axis=1)*runits/au2pc, color=mpl_cols[icol%len(mpl_cols)], linewidth=2)
-						plt.plot(t*tunits, np.linalg.norm(cxb[inghbr], axis=1)*runits/au2pc, linestyle='dashed', color='r', linewidth=1)
-						plt.scatter(np.array(logst[inghbr])*tunits, np.array(logsx[inghbr])*runits/au2pc, color=mpl_cols[icol%len(mpl_cols)], marker='+')
-					icol+=1
+				x_order= np.append(x_order, logsx[inghbr]*runits) 
+				e_order= np.append(e_order, logse[inghbr]) 
+				t_order = np.append(t_order, logst[inghbr]*tunits) 
+				m_order = np.append(m_order, np.ones(len(logsx[inghbr]))*cm[inghbr])
 
 				if plotall:
-					plt.xlabel('Time [Myr]')
-					plt.ylabel('Separation [au]')
-					plt.yscale('log')
-					plt.savefig(simulation.out+'_enchist_{0}.pdf'.format(istar), format='pdf', bbox_inches='tight')
-					plt.close()
-				print(x_order,t_order, e_order)
-				chron = np.argsort(t_order)
-				x_order = x_order[chron]
-				m_order = m_order[chron]
-				e_order = e_order[chron]
-				t_order = t_order[chron]
+					plt.plot(t*tunits, np.linalg.norm(cx[inghbr], axis=1)*runits/au2pc, color=mpl_cols[icol%len(mpl_cols)], linewidth=2)
+					plt.plot(t*tunits, np.linalg.norm(cxb[inghbr], axis=1)*runits/au2pc, linestyle='dashed', color='r', linewidth=1)
+					plt.scatter(np.array(logst[inghbr])*tunits, np.array(logsx[inghbr])*runits/au2pc, color=mpl_cols[icol%len(mpl_cols)], marker='+')
+				icol+=1
 
-				if len(x_order)>0:
-					print('Closest encounter: ', np.amin(x_order), m2au, runits)
-
-
-				np.save(simulation.out+'_enchist_{0}'.format(istar), np.array([x_order, m_order, e_order, t_order]))
-
-				"""print('Calculating disc evolution for star {0}'.format(istar))
-
-				revol = cluster_calcs.disc_evol(x_order, e_order,m_order, t_order, init_rad, m[istar],5000., 0.8)"""
-				"""
-			
-
-				rout_evol = np.ones(res)*init_rad
-				times_evol = np.linspace(0.0, t[-1]*tunits*s2myr, res)
-
-
-				itime=0
-				if revol!=None:
-					for iev in range(res):
-						if itime<len(t_order):
-							while times_evol[iev]>t_order[itime]:
-								rout_evol[iev:] = revol[itime]
-								itime+=1
-								if itime>=len(t_order):
-									break
-
-
-					#plt.plot(times_evol, rout_evol)
-					evolve_rall.append(rout_evol)
-					np.save(simulation.out+'_encrevol_{0}'.format(istar), rout_evol)
-					np.save('time_revol', times_evol)
-				else:
-					print(np.amin(e_order), np.amin(x_order))
-					print('Binary phase detected for {0}.'.format(istar))
-					np.save(simulation.out+'_encrevol_{0}'.format(istar), np.array([]))"""
-				
-			
-			else:
-				
-				x_order, m_order, e_order, t_order = np.load(simulation.out+'_enchist_{0}.npy'.format(istar))
-				"""print('Previous radius calculation found for {0}'.format(istar))
-				rout_evol = np.load('revol_{0}.npy'.format(istar))
-				if len(rout_evol)>1:
-					evolve_rall.append(rout_evol)"""
+			if plotall:
+				plt.xlabel('Time [Myr]')
+				plt.ylabel('Separation [au]')
+				plt.yscale('log')
+				plt.savefig(simulation.out+'_enchist_{0}.pdf'.format(istar), format='pdf', bbox_inches='tight')
+				plt.close()
+			print(x_order,t_order, e_order)
+			chron = np.argsort(t_order)
+			x_order = x_order[chron]
+			m_order = m_order[chron]
+			e_order = e_order[chron]
+			t_order = t_order[chron]
 
 			if len(x_order)>0:
-				xmin  = np.amin(x_order)
-				print('Closest encounter for i=%d : %.2e'%(istar, xmin))
-				xmins[ict] = xmin
-			else:
-				xmins[ict]= np.inf
-			ict+=1
+				print('Closest encounter: ', np.amin(x_order), m2au, runits)
+
+
+			np.save(simulation.out+'_enchist_{0}'.format(istar), np.array([x_order, m_order, e_order, t_order]))
+
+			"""print('Calculating disc evolution for star {0}'.format(istar))
+
+			revol = cluster_calcs.disc_evol(x_order, e_order,m_order, t_order, init_rad, m[istar],5000., 0.8)"""
+			"""
 		
-		np.save(simulation.out+'_xmin', xmins)
-	else:
-		xmins = np.load(simulation.out+'_xmin.npy')
 
-	"""plt.figure(figsize=(4.,4.))
-	plt.scatter(Rvals, xmins, c='k', s= 3, marker ='+')
-	plt.xscale('log')
-	plt.yscale('log')
-	plt.xlabel('Projected distance from centre [pc]')
-	plt.ylabel('Closest encounter distance [au]')
-	plt.xlim([1e-1, 20.0])
-	plt.ylim([1e1, 1e5])
-	plt.savefig(simulation.out+'_xmins.pdf', format='pdf', bbox_inches='tight')
-	plt.show()"""
+			rout_evol = np.ones(res)*init_rad
+			times_evol = np.linspace(0.0, t[-1]*tunits*s2myr, res)
 
-	bins = np.logspace(-5., 0, 20)
 
-	plt.figure(figsize=(4.,4.))
-	plt.hist(np.log10(xmins), facecolor='b', density=True, alpha=0.5, bins=bins)
-	plt.ylabel('Probability density')
-	plt.xlabel('Log closest encounter distance [au]')
-	plt.savefig(simulation.out+'_xminhist.pdf', format='pdf', bbox_inches='tight')
-	plt.show()
+			itime=0
+			if revol!=None:
+				for iev in range(res):
+					if itime<len(t_order):
+						while times_evol[iev]>t_order[itime]:
+							rout_evol[iev:] = revol[itime]
+							itime+=1
+							if itime>=len(t_order):
+								break
 
-	"""times_evol = np.load('time_revol.npy')
-	#plt.show()
-	evolve_rall = np.array(evolve_rall)
-	rall_mean = np.mean(evolve_rall, axis=0)
-	rall_med = np.median(evolve_rall, axis=0)
-	plt.plot(times_evol, rall_med, 'k')
-	plt.plot(times_evol, rall_mean, 'k', linestyle='--')
-	plt.show()"""
+
+				#plt.plot(times_evol, rout_evol)
+				evolve_rall.append(rout_evol)
+				np.save(simulation.out+'_encrevol_{0}'.format(istar), rout_evol)
+				np.save('time_revol', times_evol)
+			else:
+				print(np.amin(e_order), np.amin(x_order))
+				print('Binary phase detected for {0}.'.format(istar))
+				np.save(simulation.out+'_encrevol_{0}'.format(istar), np.array([]))"""
+			
+		
+		else:
+			
+			x_order, m_order, e_order, t_order = np.load(simulation.out+'_enchist_{0}.npy'.format(istar))
+			"""print('Previous radius calculation found for {0}'.format(istar))
+			rout_evol = np.load('revol_{0}.npy'.format(istar))
+			if len(rout_evol)>1:
+				evolve_rall.append(rout_evol)"""
+
+		if len(x_order)>0:
+			xmin  = np.amin(x_order)
+			print('Closest encounter for i=%d : %.2e'%(istar, xmin))
+			xmins[ict] = xmin
+		else:
+			xmins[ict]= np.inf
+		ict+=1
 
 	
 

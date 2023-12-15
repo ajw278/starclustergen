@@ -64,7 +64,6 @@ def encounter_history_istar(istar, rstars, vstars,  mstars,nclose=3):
 	return cx, cv, cm, nblst 
 
 def binary_filter(cx, cv, cm, sepfilt=0.1, G=1.0):
-	print(cx.shape)
 	cx_alt = copy.copy(cx)
 	cv_alt = copy.copy(cv)
 	cx_mag = np.linalg.norm(cx, axis=-1)
@@ -77,7 +76,6 @@ def binary_filter(cx, cv, cm, sepfilt=0.1, G=1.0):
 			bcm = (cm[j_s]+cm[i_s])
 			bcx = (cx[j_s]*cm[j_s] + cx[i_s]*cm[i_s])/bcm
 			bcv = (cv[j_s]*cm[j_s] + cv[i_s]*cm[i_s])/bcm
-			print(np.where(ifilt), cx.shape, bcx.shape)
 			if np.sum(ifilt)>0:
 				cx_alt[j_s, ifilt] = bcx[ifilt]
 				cx_alt[i_s, ifilt] = np.inf
@@ -120,7 +118,6 @@ def get_closeapproach(dr, dv, m1, m2, T, add=1, G=1.0):
 	drmag = np.linalg.norm(dr, axis=-1)[:,np.newaxis]
 	dvmag = np.linalg.norm(dv, axis=-1)[:,np.newaxis]
 
-	print(drmag.shape, dvmag.shape, h)
 
 	#Calculate eccentricity vector
 	e_vec = (np.cross(dv, h, axis=-1) / mu) - (dr / drmag)
@@ -143,7 +140,6 @@ def get_closeapproach(dr, dv, m1, m2, T, add=1, G=1.0):
 
 
 	#Eccentric anomaly
-	print(drmag/a, e)
 	E = np.arccos((1. - np.absolute(drmag/a))/e)
 
 	# Calculate mean motion

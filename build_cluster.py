@@ -512,5 +512,9 @@ if __name__=='__main__':
     #cp.pairwise_analysis(sim, ndim=2)
     #cp.plot_3dpos(sim)
     cp.encounter_analysis(sim)
+    cp.encounter_analysis_binaries(sim)
+    irand = np.random.choice(np.arange(1000), size=30)
+    cp.compare_encanalysis(sim, irand)
+    
     #sim = rb.setupSimulation(rs_all, vs_all*1e5*1e6*year2s/pc2cm, ms_all, units=('Myr', 'pc', 'Msun'))
     #sim.integrate(3.0)
