@@ -31,25 +31,29 @@ class BinarySnapshot:
 			self.snapshots_data = []
 			self.get_flist(self.run_dir)
 			self.save(self.home_dir)
+		
+		self.home_dir = os.getcwd()
+		if run_dir  is None:
+			self.run_dir = self.home_dir+'/run_dir'
+		else:
+			self.run_dir = run_dir
 
 	def get_flist(self, run_dir):
 		os.chdir(run_dir)
 		snapshot_files = []
-		for iconf in range(1000):
-			files_tmp = glob.glob('bdat.9_'+str(iconf)+'.*')
-			
-			if len(files_tmp)>0:
-				fle_nums = np.zeros(len(files_tmp))
-				for ifle in range(len(files_tmp)):
-					fle_nums[ifle] = float(files_tmp[ifle].split('.')[-1])
+		files_tmp = glob.glob('bdat.9_'+'*')
 
-				ifile_srt = np.argsort(fle_nums)
-					
-					#conf_list.append(iconf)
-					#subconf_list.append([])
-				for ifile in ifile_srt:
-					#subconf_list.append(int(fname.split('.')[-1]))
-					snapshot_files.append(files_tmp[ifile])
+		if len(files_tmp)==0:
+			raise Exception('No binary data files found in run directory: %s'%run_dir)
+		
+		fle_nums = np.zeros(len(files_tmp))
+		for ifle in range(len(files_tmp)):
+			fle_nums[ifle] = float(files_tmp[ifle].split('_')[-1])
+
+		ifile_srt = np.argsort(fle_nums)
+
+		for ifile in ifile_srt:
+			snapshot_files.append(files_tmp[ifile])
 		self.snapshot_files = snapshot_files
 	
 	def save(self, home_dir):
@@ -63,8 +67,10 @@ class BinarySnapshot:
 		os.chdir(home_dir)
 
 		if os.path.exists('obj/'+self.out+'.binaries.pkl'):
-
-			oldclass = saveload.load_obj(self.out+'.binaries')
+			try:
+				oldclass = saveload.load_obj(self.out+'.binaries')
+			except:
+				oldclass = saveload.load_obj_main(self.out+'.binaries', 'binary_reader')
 			oldprops = oldclass.__dict__ 
 			for okey in oldprops:
 				setattr(self, okey, getattr(oldclass,okey))
@@ -245,25 +251,33 @@ class WideBinarySnapshot:
 			self.snapshots_data = []
 			self.get_flist(self.run_dir)
 			self.save(self.home_dir)
+		
+		self.home_dir = os.getcwd()
+		if run_dir  is None:
+			self.run_dir = self.home_dir+'/run_dir'
+		else:
+			self.run_dir = run_dir
 
-	def get_flist(self, run_dir):
+	def get_flist(self, run_dir, nmax=10):
 		os.chdir(run_dir)
 		snapshot_files = []
-		for iconf in range(1000):
-			files_tmp = glob.glob('bwdat.19_'+str(iconf)+'.*')
-			
-			if len(files_tmp)>0:
-				fle_nums = np.zeros(len(files_tmp))
-				for ifle in range(len(files_tmp)):
-					fle_nums[ifle] = float(files_tmp[ifle].split('.')[-1])
+		files_tmp = glob.glob('bwdat.19_*')
 
-				ifile_srt = np.argsort(fle_nums)
-					
-					#conf_list.append(iconf)
-					#subconf_list.append([])
-				for ifile in ifile_srt:
-					#subconf_list.append(int(fname.split('.')[-1]))
-					snapshot_files.append(files_tmp[ifile])
+		if len(files_tmp)==0:
+			raise Exception('No wide binary data files found in run directory: %s'%run_dir)
+		
+		if len(files_tmp)>0:
+			fle_nums = np.zeros(len(files_tmp))
+			for ifle in range(len(files_tmp)):
+				fle_nums[ifle] = float(files_tmp[ifle].split('_')[-1])
+
+			ifile_srt = np.argsort(fle_nums)
+				
+				#conf_list.append(iconf)
+				#subconf_list.append([])
+			for ifile in ifile_srt:
+				#subconf_list.append(int(fname.split('.')[-1]))
+				snapshot_files.append(files_tmp[ifile])
 		self.snapshot_files = snapshot_files
 	
 	def save(self, home_dir):
@@ -277,8 +291,10 @@ class WideBinarySnapshot:
 		os.chdir(home_dir)
 
 		if os.path.exists('obj/'+self.out+'.widebinaries.pkl'):
-
-			oldclass = saveload.load_obj(self.out+'.widebinaries')
+			try:
+				oldclass = saveload.load_obj(self.out+'.widebinaries')
+			except:
+				oldclass = saveload.load_obj_main(self.out+'.widebinaries', 'binary_reader')
 			oldprops = oldclass.__dict__ 
 			for okey in oldprops:
 				setattr(self, okey, getattr(oldclass,okey))
@@ -481,8 +497,11 @@ class AllBinaries:
 		os.chdir(home_dir)
 
 		if os.path.exists('obj/'+self.out+'.allbinaries.pkl'):
-
-			oldclass = saveload.load_obj(self.out+'.allbinaries')
+			try:
+				oldclass = saveload.load_obj(self.out+'.allbinaries')
+			except:
+				oldclass = saveload.load_obj_main(self.out+'.allbinaries', 'binary_reader')
+			
 			oldprops = oldclass.__dict__ 
 			for okey in oldprops:
 				setattr(self, okey, getattr(oldclass,okey))
@@ -500,14 +519,15 @@ class AllBinaries:
 		return wide_bin_snap.snapshots_info['Time[NB]'].values
 	
 	def save_snap(self, home_dir, datarr, i):
-		fname = home_dir+'/obj/'+self.out+'_ts_%d'%i
-		if not os.path.exists(home_dir+'/obj'):
-			os.makedirs(home_dir+'/obj')
+		fname = home_dir+'/sim_ts/'+self.out+'_ts_%d'%i
+		if not os.path.exists(home_dir+'/sim_ts'):
+			os.makedirs(home_dir+'/sim_ts')
 		np.save(fname, datarr)
 		return None
 	
 	def load_snap(self, home_dir, i):
-		fname = home_dir+'/obj/'+self.out+'_ts_%d'%i +'.npy'
+		fname = home_dir+'/sim_ts/'+self.out+'_ts_%d'%i +'.npy'
+
 		if os.path.exists(fname):
 			datarr = np.load(fname)
 			return datarr
@@ -533,7 +553,7 @@ class AllBinaries:
 			if not darr is None:
 				self.bflag[i], self.icomp[i], self.mcomp[i], self.ecc[i], self.semi[i] = darr[:]
 				self.compiled_flag[i] =True
-			elif not self.compiled_flag[i] and False:
+			elif not self.compiled_flag[i]:
 				wbin_data = wide_bin_snap.search_snapshot('Time[NB]', time)
 				bin_data = bin_snap.search_snapshot('Time[NB]', time)
 				
@@ -561,6 +581,7 @@ class AllBinaries:
 							self.ecc[i, j] = bin_data.iloc[comp_index]['ECC']
 							self.semi[i, j] = bin_data.iloc[comp_index]['SEMI[AU]']
 
+
 				darr = np.array([self.bflag[i], self.icomp[i], self.mcomp[i], self.ecc[i], self.semi[i]])
 				self.save_snap(self.home_dir, darr, i)
 				print('Complete for {0}/{1} times'.format(i+1, len(self.times_wide_binary)))
@@ -587,7 +608,6 @@ class AllBinaries:
 if __name__=='__main__':
 	import nbody6_interface as nbi
 	sim = nbi.nbody6_cluster(np.array([]), np.array([]), np.array([]),  outname='clustersim', load=True, init=False)
-	
 
 	wbin_snap = WideBinarySnapshot()
 	wbin_snap.create_database()
@@ -601,6 +621,7 @@ if __name__=='__main__':
 	allbin.create_binary_arrays()
 	plt.rc('text', usetex=True)
 	irand = np.random.choice(istars, size=100)
+	irand  = np.arange(10)
 	fig, ax = plt.subplots(figsize=(5.,4.))
 	for istar in irand:
 		t,bf, ic, a, e, m2 = allbin.get_history(istar)
