@@ -311,7 +311,7 @@ def encounter_analysis_binaries(simulation, direct='enchist_bins'):
 	for istar in isub:
 		print('Binary encounter history for %d / %d'%(istar, len(isub)))
 		if not os.path.isfile(direct+'/'+fname+'.npy'):
-			t,bf, ic, a, e, m2 = allbin.get_history(istar)
+			t,bf, ic, a, e, m2 = allbin.get_history(istar+1)
 			if np.sum(bf)>0:
 				dt = np.diff(t, prepend=0.0)
 				period = np.sqrt(4.*np.pi*np.pi*(a*au2pc/runit)**3/(G*(m[istar]+m2/munit)))
