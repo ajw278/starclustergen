@@ -352,8 +352,8 @@ def compare_encanalysis(simulation, istars, direct_s='enchist', direct_b='enchis
 	icol = 0
 	for ist in istars:
 		
-		x_order, m_order, e_order, t_order = np.load(direct_s+fname_s.format(ist))
-		x_order_b, m_order_b, e_order_b, t_order_b = np.load(direct_b+fname_b.format(ist))
+		x_order, m_order, e_order, t_order = np.load(direct_s+'/'+fname_s.format(ist))
+		x_order_b, m_order_b, e_order_b, t_order_b = np.load(direct_b+'/'+fname_b.format(ist))
 		plt.scatter(t_order*tunits, x_order*runits/au2pc, color=mpl_cols[icol%len(mpl_cols)], marker='+')
 		plt.scatter(t_order_b*tunits, x_order_b*runits/au2pc, color=mpl_cols[icol%len(mpl_cols)], marker='^')
 
