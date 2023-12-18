@@ -347,8 +347,8 @@ def encounter_analysis_binaries(simulation, direct='enchist_bins'):
 def compare_encanalysis(simulation, istars, direct_s='enchist', direct_b='enchist_bins'):
 
 	munits, runits, tunits, vunits = copy.copy(simulation.units_astro)
-	fname_b = simulation.out+'_enchist_binaries_{0}'
-	fname_s = simulation.out+'_enchist_{0}'
+	fname_b = simulation.out+'_enchist_binaries_{0}.npy'
+	fname_s = simulation.out+'_enchist_{0}.npy'
 	icol = 0
 	for ist in istars:
 		
