@@ -297,6 +297,7 @@ def encounter_analysis_binaries(simulation, direct='enchist_bins'):
 
 
 
+
 	istars = np.arange(1100)
 	allbin = bread.AllBinaries(istars)
 	#allbin.create_binary_arrays()
@@ -307,6 +308,10 @@ def encounter_analysis_binaries(simulation, direct='enchist_bins'):
 
 	fname = simulation.out+'_enchist_binaries_{0}'
 
+
+	if not os.path.isdir(direct):
+		os.makedirs(direct)
+	
 	isub = np.sort(isub)
 	for istar in isub:
 		print('Binary encounter history for %d / %d'%(istar, len(isub)))
@@ -334,19 +339,21 @@ def encounter_analysis_binaries(simulation, direct='enchist_bins'):
 				menc = m2[iienc]/munit
 				print(tenc)
 				print('Saving')
-				np.save(fname.format(istar), np.array([rpenc, menc, eenc, tenc]))
+				np.save(direct+'/'+fname.format(istar), np.array([rpenc, menc, eenc, tenc]))
 			else:
-				np.save(fname.format(istar), np.array([[], [], [], []]))
+				np.save(direct+'/'+fname.format(istar), np.array([[], [], [], []]))
 
 
-def compare_encanalysis(simulation, istars):
+def compare_encanalysis(simulation, istars, direct_s='enchist', direct_b='enchist_bins'):
 
 	munits, runits, tunits, vunits = copy.copy(simulation.units_astro)
+	fname_b = simulation.out+'_enchist_binaries_{0}'
+	fname_s = simulation.out+'_enchist_{0}'
 	icol = 0
 	for ist in istars:
 		
-		x_order, m_order, e_order, t_order = np.load(simulation.out+'_enchist_{0}.npy'.format(ist))
-		x_order_b, m_order_b, e_order_b, t_order_b = np.load(simulation.out+'_enchist_binaries_{0}.npy'.format(ist))
+		x_order, m_order, e_order, t_order = np.load(direct_s+fname_s.format(ist))
+		x_order_b, m_order_b, e_order_b, t_order_b = np.load(direct_b+fname_b.format(ist))
 		plt.scatter(t_order*tunits, x_order*runits/au2pc, color=mpl_cols[icol%len(mpl_cols)], marker='+')
 		plt.scatter(t_order_b*tunits, x_order_b*runits/au2pc, color=mpl_cols[icol%len(mpl_cols)], marker='^')
 
