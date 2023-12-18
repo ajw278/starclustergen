@@ -282,7 +282,7 @@ def pairwise_analysis(simulation, ndim=2):
 	plt.show()
 
 
-def encounter_analysis_binaries(simulation):
+def encounter_analysis_binaries(simulation, direct='enchist_bins'):
 
 	wbin_snap = bread.WideBinarySnapshot()
 	wbin_snap.create_database()
@@ -305,9 +305,12 @@ def encounter_analysis_binaries(simulation):
 
 	isub = np.arange(len(m))
 
+	fname = simulation.out+'_enchist_binaries_{0}'
+
 	isub = np.sort(isub)
 	for istar in isub:
 		print('Binary encounter history for %d / %d'%(istar, len(isub)))
+		if not os.path.isfile(direct+'/'+fname+'.npy'):
 			t,bf, ic, a, e, m2 = allbin.get_history(istar)
 			if np.sum(bf)>0:
 				dt = np.diff(t, preprend=0.0)
@@ -325,9 +328,9 @@ def encounter_analysis_binaries(simulation):
 				menc = m2[iienc]/munit
 				print(tenc)
 				print('Saving')
-				np.save(simulation.out+'_enchist_binaries_{0}'.format(istar), np.array([rpenc, menc, eenc, tenc]))
+				np.save(fname.format(istar), np.array([rpenc, menc, eenc, tenc]))
 			else:
-				np.save(simulation.out+'_enchist_binaries_{0}'.format(istar), np.empty((4,1)))
+				np.save(fname.format(istar), np.empty((4,1)))
 
 
 def compare_encanalysis(simulation, istars):
