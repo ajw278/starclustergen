@@ -399,7 +399,7 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 	enchist = np.zeros((len(m), 4))
 	ict=0
 	for istar in istars:
-		print('Scanning encounters for i={2} ({0}/{1})'.format(ict+1, len(isub), istar))
+		print('Scanning encounters for i={2} ({0}/{1})'.format(ict+1, len(istars), istar))
 		if not os.path.isfile(direct+'/'+simulation.out+'_enchist_{0}.npy'.format(istar)):
 			print('Generating global encounter history for star {0}... '.format(istar))
 			cx, cv, cm, cn = cc.encounter_history_istar(istar, r, v, m, 2)
