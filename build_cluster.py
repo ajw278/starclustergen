@@ -144,6 +144,18 @@ def get_kroupa_imf(m1=0.08, p1=0.3, m2=0.5, p2=1.3, m3=1.0, p3=2.3, mmin=0.08):
     
     return interpolate.interp1d(msp, xi)
 
+def get_imf_cdf():
+    
+    msp = np.logspace(-2, 2, 1000)
+    
+    imf_func= get_kroupa_imf()
+    
+    imf = imf_func(msp)
+    cdf = np.cumsum(imf)
+    cdf /=cdf[-1]
+    
+    return  interpolate.interp1d(msp, cdf)
+
 
 def get_imf_icdf():
     
@@ -444,7 +456,6 @@ if __name__=='__main__':
             covmat = np.eye(3)
             mu = np.zeros(3)
 
-        print('Nbox:', Nbox)
         if not os.path.isfile('rgbox.npy'):
             rs = gf.build_cluster(Nstars=10000, Nbox=Nbox,  Lbox=Lbox, Rcl = 30.0, \
                      sharp_edge= 10.0, Pk_norm=Pk_norm, Pk_index=Pk_index, normed_covmat=covmat, mu=mu, seed=seed)
@@ -457,12 +468,20 @@ if __name__=='__main__':
 
         istars = np.arange(rs.shape[1]) 
         #istars = select_istars(rs, 30.0, sharpness=10.0)
-        print(istars)
-        istars = np.random.choice(istars, size=700, replace=False)
-        print(rs.shape)
-        rs = rs[:, istars]
 
-        print('Vcalc walk...')
+        nobs = 500
+        mlim =0.1
+        imf_cdf = get_imf_cdf()
+        fnd = imf_cdf(mlim)
+        ntot = nobs / (1.-fnd)
+
+        print('Inferring total number of stars based on detection limit m_det = %.2lf Msol'%mlim)
+        print('Fraction of stars below this threshold mass: %.2E'%fnd)
+        print('Assumed number of detected stars: %d '%nobs)
+        print('Assumed total stars: %d '%ntot)
+
+        istars = np.random.choice(istars, size=ntot, replace=False)
+        rs = rs[:, istars]
         vs = vgf.velocity_gen(rs, r0=r0, p=p, sv0=sv0)
 
         
@@ -506,15 +525,16 @@ if __name__=='__main__':
                 tend_Myr = 3.0, gasparams=None, etai=0.005, etar=0.005, etau=0.01, dtmin_Myr=1e-8, \
                 rmin_pc=1e-8,dtjacc_Myr=0.05, load=True, ctype='smooth', force_incomp = False, \
                     rtrunc=50.0, nbin0=nbins0, aclose_au=200.0)
-    #sim.evolve(reread=False)
+    sim.evolve(reread=False)
 
     #cp.plot_dvNN_fromsim(sim, time=2.0, r0=r0, p=p, sv0=sv0)
     #cp.pairwise_analysis(sim, ndim=2)
     #cp.plot_3dpos(sim)
-    #cp.encounter_analysis(sim)
-    cp.encounter_analysis_binaries(sim)
-    irand = np.random.choice(np.arange(1000), size=30)
-    cp.compare_encanalysis(sim, irand)
+    enchist = cp.encounter_analysis(sim)
+    #cp.encounter_analysis_binaries(sim)
+    #irand = np.random.choice(np.arange(1000), size=10)
+    #cp.compare_encanalysis(sim, irand)
+    cp.disc_evolution(sim, enchist, nt=1000, rinit=100.0)
 
     #sim = rb.setupSimulation(rs_all, vs_all*1e5*1e6*year2s/pc2cm, ms_all, units=('Myr', 'pc', 'Msun'))
     #sim.integrate(3.0)

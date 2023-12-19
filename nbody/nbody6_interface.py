@@ -215,10 +215,16 @@ class nbody6_cluster:
 					print('Specified end time: ', self.tend)
 					print('Setting simulation to "complete"')
 					self.complete=True
-		if not hasattr(self, 'r') or force_incomp:
-			print('No positional array found, assuming simulation is incomplete...')
-			self.complete=False
-	
+		if (load_succ and self.complete and not hasattr(self, 'r')) or force_incomp:
+			if not force_incomp:
+				print('No positional array found, assuming simulation is incomplete...')
+				print('Attempting re-read...')
+				self.combine(self, reread=True)
+				if not hasattr(self, 'r'):
+					self.complete=False
+			else:
+				self.complete=False
+
 
 	def save(self):
 		if not os.path.exists('obj'):
@@ -929,7 +935,6 @@ class nbody6_cluster:
 	
 	def combine(self, reread=False):
 		if not self.complete or reread:
-			idir = 0
 			for idir in range(len(self.dirs)):
 				d = self.dirs[idir]
 				if os.path.isdir(d):
@@ -946,18 +951,18 @@ class nbody6_cluster:
 						t = np.append(t, ttmp, axis=0)
 				else:
 					raise Exception('"{0}" not found.'.format(d))
-		
-			np.save(self.out+'_t', t)
-			np.save(self.out+'_r', r)
-			np.save(self.out+'_v', v)
-			#np.save(self.out+'_units', np.array([tunits, munits, runits]))
+			
+				np.save(self.out+'_t', t)
+				np.save(self.out+'_r', r)
+				np.save(self.out+'_v', v)
+				#np.save(self.out+'_units', np.array([tunits, munits, runits]))
 
-			self.r = r 
-			self.v = v
-			self.t = t
-			self.m = self.ms
-			#self.units_SI = np.array([tunits, munits, runits])
-			self.save()
+				self.r = r 
+				self.v = v
+				self.t = t
+				self.m = self.ms
+				#self.units_SI = np.array([tunits, munits, runits])
+				self.save()
 		
 		return None
 
@@ -1041,5 +1046,9 @@ class nbody6_cluster:
 		return None
 
 	def evolve(self, reread=True, suppress_restart=True):
-		self.run_nbody(reread=reread, suppress_restart=suppress_restart)
+		if not self.complete:
+			print('Error')
+			exit()
+			self.run_nbody(reread=reread, suppress_restart=suppress_restart)
+		
 		self.combine(reread=reread)

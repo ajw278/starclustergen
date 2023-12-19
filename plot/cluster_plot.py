@@ -347,6 +347,8 @@ def encounter_analysis_binaries(simulation, direct='enchist_bins'):
 def compare_encanalysis(simulation, istars, direct_s='enchist', direct_b='enchist_bins'):
 
 	munits, runits, tunits, vunits = copy.copy(simulation.units_astro)
+
+	print(tunits, runits)
 	fname_b = simulation.out+'_enchist_binaries_{0}.npy'
 	fname_s = simulation.out+'_enchist_{0}.npy'
 	icol = 0
@@ -354,8 +356,8 @@ def compare_encanalysis(simulation, istars, direct_s='enchist', direct_b='enchis
 		
 		x_order, m_order, e_order, t_order = np.load(direct_s+'/'+fname_s.format(ist))
 		x_order_b, m_order_b, e_order_b, t_order_b = np.load(direct_b+'/'+fname_b.format(ist))
-		plt.scatter(t_order*tunits, x_order*runits/au2pc, color=mpl_cols[icol%len(mpl_cols)], marker='+')
-		plt.scatter(t_order_b*tunits, x_order_b*runits/au2pc, color=mpl_cols[icol%len(mpl_cols)], marker='^')
+		plt.scatter(t_order, x_order/au2pc, color=mpl_cols[icol%len(mpl_cols)], marker='+')
+		plt.scatter(t_order_b*tunits, x_order_b, color=mpl_cols[icol%len(mpl_cols)], marker='^')
 
 		icol+=1
 	plt.yscale('log')
@@ -366,10 +368,10 @@ def compare_encanalysis(simulation, istars, direct_s='enchist', direct_b='enchis
 	icol = 0
 	for ist in istars:
 		
-		x_order, m_order, e_order, t_order = np.load(simulation.out+'_enchist_{0}.npy'.format(ist))
-		x_order_b, m_order_b, e_order_b, t_order_b = np.load(simulation.out+'_enchist_binaries_{0}.npy'.format(ist))
-		plt.scatter(t_order*tunits, e_order, color=mpl_cols[icol%len(mpl_cols)], marker='+')
-		plt.scatter(t_order_b*tunits, e_order, color=mpl_cols[icol%len(mpl_cols)], marker='^')
+		x_order, m_order, e_order, t_order = np.load(direct_s+'/'+fname_s.format(ist))
+		x_order_b, m_order_b, e_order_b, t_order_b = np.load(direct_b+'/'+fname_b.format(ist))
+		plt.scatter(t_order, e_order, color=mpl_cols[icol%len(mpl_cols)], marker='+')
+		plt.scatter(t_order_b*tunits, e_order_b, color=mpl_cols[icol%len(mpl_cols)], marker='^')
 
 		icol+=1
 	
@@ -388,34 +390,15 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 	munits_SI, runits_SI, tunits_SI  = copy.copy(simulation.units_SI)
 	print('G:', 6.67e-11*munits_SI*(tunits_SI**2)/(runits_SI)**3)
 
-	rsep = cdist(r[0], r[0])
-	rsep = rsep[np.triu_indices(len(r[0]),k=1)]
-	rsep = rsep.flatten()
-
-
-	#istars = np.arange(1100)
-	#allbin = bread.AllBinaries(istars)
-	#allbin.create_binary_arrays()
-
-	bins=  np.logspace(-4., 1.5, 25)
-
-	isub = np.arange(len(m))
-
-	isub = np.sort(isub)
-
-	all_x = np.array([])
-	all_e = np.array([])
-
-	evolve_rall = []
+	istars = np.arange(len(m))
 
 	if not os.path.isdir(direct):
 		os.makedirs(direct)
 
 	print('Starting encounter analysis...')
-
-	print('Finding close encounters...')
+	enchist = np.zeros((len(m), 4))
 	ict=0
-	for istar in isub[::-1]:
+	for istar in istars:
 		print('Scanning encounters for i={2} ({0}/{1})'.format(ict+1, len(isub), istar))
 		if not os.path.isfile(direct+'/'+simulation.out+'_enchist_{0}.npy'.format(istar)):
 			print('Generating global encounter history for star {0}... '.format(istar))
@@ -438,13 +421,10 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 			print('Organising neighbour interactions...')
 			print('Number of neighbours:', cn)
 			for inghbr in range(len(cn)):
-				all_x = np.append(all_x, logsx[inghbr])
-				all_e = np.append(all_e, logse[inghbr])
-
-				x_order= np.append(x_order, logsx[inghbr]*runits) 
+				x_order= np.append(x_order, logsx[inghbr]*runits/au2pc) 
 				e_order= np.append(e_order, logse[inghbr]) 
 				t_order = np.append(t_order, logst[inghbr]*tunits) 
-				m_order = np.append(m_order, np.ones(len(logsx[inghbr]))*cm[inghbr])
+				m_order = np.append(m_order, np.ones(len(logsx[inghbr]))*cm[inghbr]*munits)
 
 				if plotall:
 					plt.plot(t*tunits, np.linalg.norm(cx[inghbr], axis=1)*runits/au2pc, color=mpl_cols[icol%len(mpl_cols)], linewidth=2)
@@ -469,53 +449,71 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 				print('Closest encounter: ', np.amin(x_order), m2au, runits)
 
 			np.save(direct+'/'+simulation.out+'_enchist_{0}'.format(istar), np.array([x_order, m_order, e_order, t_order]))
-
-			"""print('Calculating disc evolution for star {0}'.format(istar))
-
-			revol = cluster_calcs.disc_evol(x_order, e_order,m_order, t_order, init_rad, m[istar],5000., 0.8)"""
-			"""
-		
-
-			rout_evol = np.ones(res)*init_rad
-			times_evol = np.linspace(0.0, t[-1]*tunits*s2myr, res)
-
-
-			itime=0
-			if revol!=None:
-				for iev in range(res):
-					if itime<len(t_order):
-						while times_evol[iev]>t_order[itime]:
-							rout_evol[iev:] = revol[itime]
-							itime+=1
-							if itime>=len(t_order):
-								break
-
-
-				#plt.plot(times_evol, rout_evol)
-				evolve_rall.append(rout_evol)
-				np.save(simulation.out+'_encrevol_{0}'.format(istar), rout_evol)
-				np.save('time_revol', times_evol)
-			else:
-				print(np.amin(e_order), np.amin(x_order))
-				print('Binary phase detected for {0}.'.format(istar))
-				np.save(simulation.out+'_encrevol_{0}'.format(istar), np.array([]))"""
-			
-		
 		else:
-			
 			x_order, m_order, e_order, t_order = np.load(direct+'/'+simulation.out+'_enchist_{0}.npy'.format(istar))
-			"""print('Previous radius calculation found for {0}'.format(istar))
-			rout_evol = np.load('revol_{0}.npy'.format(istar))
-			if len(rout_evol)>1:
-				evolve_rall.append(rout_evol)"""
+		
+		enchist[istar] = np.array([x_order, m_order, e_order, t_order])
 
 		if len(x_order)>0:
 			xmin  = np.amin(x_order)
 			print('Closest encounter for i=%d : %.2e'%(istar, xmin))
-		
 		ict+=1
+	return enchist
+	
+def Rtrunc(Rperi, Mstar, Rdisc, epert, Mpert):
+	phi1 = 0.629
+	phi2 = 0.112
+	phi3 = 0.133
+	psi1 = 0.301
+	psi2 = 0.936
+	psi3 = 0.320
+
+	epert = max(epert,1.0)
+
+	f =(Mpert/Mstar)**(1./3.)
+	Rx = Rdisc/Rperi
+	Rxinter = (1.-psi1*epert**-psi2)*Rx+f*psi1*psi3*epert**-psi2
+	Rxclose = phi1*epert**(f*phi2)*f*(Mpert/Mstar)**phi3
+	Rnew = Rperi*min(min(Rx, Rxinter), Rxclose)
+	
+	return Rnew
+
+def compute_discevol(tseries, Rinit, Mst, Rps, eps, Mps, tps):
+
+	rdisc = Rinit*np.ones(tseries.shape)
+	for i, rp in enumerate(Rps):
+		rd_  = rdisc[-1]
+		rnew = Rtrunc(rp, Mst[i], rd_, eps[i], Mps[i])
+		iolder = tseries>tps[i]
+		rdisc[iolder] = rnew
+	
+	plt.plot(tseries, rdisc)
+	plt.show()
+			
+
+def disc_evolution(simulation, enchist, nt=1000, rinit=100.0):
+	
+	m = copy.copy(simulation.ms)
+	munits, runits, tunits, vunits = copy.copy(simulation.units_astro)
 
 	
+
+	if not os.path.isfile('disc_evol.npy'):
+
+		t_arr = np.zeros(nt)
+
+		disc_arr = np.ones((len(m), nt))
+
+		for ikey in enchist:
+			x_order, m_order, e_order, t_order = enchist[ikey]
+			disc_arr[ikey] = compute_discevol(t_arr, rinit, m[ikey], x_order, e_order, m_order, t_order)
+	else:
+		disc_arr = np.load('disc_evol_r.npy')
+		t_arr = np.load('disc_evol_t.npy')
+
+
+
+	return t_arr, disc_arr
 
 
 
