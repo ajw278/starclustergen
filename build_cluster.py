@@ -525,7 +525,7 @@ if __name__=='__main__':
                 tend_Myr = 3.0, gasparams=None, etai=0.005, etar=0.005, etau=0.01, dtmin_Myr=1e-8, \
                 rmin_pc=1e-8,dtjacc_Myr=0.05, load=True, ctype='smooth', force_incomp = False, \
                     rtrunc=50.0, nbin0=nbins0, aclose_au=200.0)
-    sim.evolve(reread=False)
+    #sim.evolve(reread=False)
 
     #cp.plot_dvNN_fromsim(sim, time=2.0, r0=r0, p=p, sv0=sv0)
     #cp.pairwise_analysis(sim, ndim=2)

@@ -475,7 +475,7 @@ def Rtrunc(Rperi, Mstar, Rdisc, epert, Mpert):
 	Rxinter = (1.-psi1*epert**-psi2)*Rx+f*psi1*psi3*epert**-psi2
 	Rxclose = phi1*epert**(f*phi2)*f*(Mpert/Mstar)**phi3
 	Rnew = Rperi*min(min(Rx, Rxinter), Rxclose)
-	
+
 	return Rnew
 
 def compute_discevol(tseries, Rinit, Mst, Rps, eps, Mps, tps):
@@ -487,8 +487,7 @@ def compute_discevol(tseries, Rinit, Mst, Rps, eps, Mps, tps):
 		iolder = tseries>tps[i]
 		rdisc[iolder] = rnew
 	
-	plt.plot(tseries, rdisc)
-	plt.show()
+	return rdisc
 			
 
 def disc_evolution(simulation, enchist, nt=1000, rinit=100.0):
@@ -507,6 +506,10 @@ def disc_evolution(simulation, enchist, nt=1000, rinit=100.0):
 		for ikey in enchist:
 			x_order, m_order, e_order, t_order = enchist[ikey]
 			disc_arr[ikey] = compute_discevol(t_arr, rinit, m[ikey], x_order, e_order, m_order, t_order)
+
+			plt.plot(t_arr, disc_arr[ikey])
+			plt.savefig('rdisc_evol_%d.pdf', bbox_inches='tight', format='pdf')
+			plt.close()
 	else:
 		disc_arr = np.load('disc_evol_r.npy')
 		t_arr = np.load('disc_evol_t.npy')
