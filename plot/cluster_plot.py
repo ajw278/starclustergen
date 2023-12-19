@@ -483,7 +483,8 @@ def compute_discevol(tseries, Rinit, Mst, Rps, eps, Mps, tps):
 	rdisc = Rinit*np.ones(tseries.shape)
 	for i, rp in enumerate(Rps):
 		rd_  = rdisc[-1]
-		rnew = Rtrunc(rp, Mst[i], rd_, eps[i], Mps[i])
+		rnew = Rtrunc(rp, Mst, rd_, eps[i], Mps[i])
+		print('Encounter params (rp, mst, rd, eps, mp):', rp, Mst, rd_, eps[i], Mps[i])
 		iolder = tseries>tps[i]
 		rdisc[iolder] = rnew
 	
@@ -505,7 +506,7 @@ def disc_evolution(simulation, enchist, nt=1000, rinit=100.0):
 
 		for ikey in enchist:
 			x_order, m_order, e_order, t_order = enchist[ikey]
-			disc_arr[ikey] = compute_discevol(t_arr, rinit, m[ikey], x_order, e_order, m_order, t_order)
+			disc_arr[ikey] = compute_discevol(t_arr, rinit, m[ikey]*munits, x_order, e_order, m_order, t_order)
 
 			plt.plot(t_arr, disc_arr[ikey])
 			plt.savefig('rdisc_evol_%d.pdf', bbox_inches='tight', format='pdf')
