@@ -396,7 +396,7 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 		os.makedirs(direct)
 
 	print('Starting encounter analysis...')
-	enchist = np.zeros((len(m), 4))
+	enchist = {}
 	ict=0
 	for istar in istars:
 		print('Scanning encounters for i={2} ({0}/{1})'.format(ict+1, len(istars), istar))
