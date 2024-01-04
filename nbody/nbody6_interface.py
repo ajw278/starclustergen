@@ -219,7 +219,7 @@ class nbody6_cluster:
 			if not force_incomp:
 				print('No positional array found, assuming simulation is incomplete...')
 				print('Attempting re-read...')
-				self.combine(self, reread=True)
+				self.store_arrays(self, reread=True)
 				if not hasattr(self, 'r'):
 					self.complete=False
 			else:
@@ -933,7 +933,7 @@ class nbody6_cluster:
 	
 
 	
-	def combine(self, reread=False):
+	def store_arrays(self, reread=False):
 		if not self.complete or reread:
 			for idir in range(len(self.dirs)):
 				d = self.dirs[idir]
@@ -1051,4 +1051,4 @@ class nbody6_cluster:
 			exit()
 			self.run_nbody(reread=reread, suppress_restart=suppress_restart)
 		
-		self.combine(reread=reread)
+		self.store_arrays(reread=reread)

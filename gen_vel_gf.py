@@ -18,12 +18,21 @@ def MB_dist(v_, sig, nd=3):
 def sigv_pl(dr, r0=1.0, p=1., sv0=1.0):
     return sv0*(dr/r0)**p
 
+"""
 def correlation_function(dr, svmax=2e5,lmin=1.0, **svparams):
     
     return np.exp(-dr*dr/lmin/lmin/2.)
 
 def RQ_Kernel(dr, lmin=0.5, alpha=1.0, **svparams):
-    return (1.+(dr/lmin)**2)**-alpha
+    return (1.+(dr*dr/2./lmin/alpha/lmin))**-alpha
+"""
+
+def velocity_kernel(dr,  lmax=10.0, p=1.0,**kwargs):
+
+    #Covariance never negative
+    drrat = 1. - np.exp(-dr/lmax)
+
+    return 1.- np.power(drrat, 2.*p )
 
 """def force_psd(matrix, epsilon=1e-8):
     eigvals, eigvecs = np.linalg.eigh(matrix)
@@ -35,7 +44,7 @@ def force_psd(matrix, alpha=1e-2):
     psd_matrix = matrix*(1.+ alpha*np.eye(len(matrix)))
     return psd_matrix
 
-def plot_dvNN(rs, vs, **svparams):
+def plot_dvNN(rs, vs, vkernel, **svparams):
     positions = rs.T
     velocities = vs.T
     # Calculate distances between all pairs of stars
@@ -106,6 +115,8 @@ def plot_dvNN(rs, vs, **svparams):
 
     rsp = np.logspace(-2, 2.0)
     plt.plot(rsp, sigv_pl(rsp, **svparams)/1e5, color='r', linewidth=2)
+
+    plt.plot(rsp, np.sqrt(1.-vkernel(rsp)), color='g', linewidth=2, linestyle='dotted' )
     plt.yscale('log')
     plt.xscale('log')
     plt.title('Magnitude of Velocity Difference to Nearest Neighbor')
@@ -113,12 +124,12 @@ def plot_dvNN(rs, vs, **svparams):
     plt.ylabel('Y Position')
     plt.xscale('log')
     plt.yscale('log')
-    plt.xlim([5e-2, 20.])
+    plt.xlim([5e-4, 20.])
     plt.ylim([5e-2, 20.])
     plt.show()
     
 
-def velocity_gen(rstars, sigv=1.0e5, **svparams):
+def velocity_gen(rstars, sigv=1.0e5, rmax=100.0,  **svparams):
     
     positions = rstars.T
     
@@ -129,13 +140,18 @@ def velocity_gen(rstars, sigv=1.0e5, **svparams):
     
 
     # Apply the covariance function element-wise to obtain the covariance matrix
-    covmat = correlation_function(drmat, lmin=0.1*np.median(drmat), **svparams)
-    
-    print(covmat)
-    print(covmat.shape)
-    
-    covmat *= (sigv*sigv)
-    
+    #covmat = correlation_function(drmat, lmin=0.1*np.median(drmat), **svparams)
+    print(np.median(drmat))
+    """covmat = RQ_Kernel(drmat, lmin=0.1, alpha=10000.0)
+    covmat *= (sigv*sigv)"""
+
+    sigvmax = sigv_pl(rmax,**svparams )
+
+    def vkern(dr):
+        k = velocity_kernel(dr, lmax=rmax, **svparams)
+        k *= sigvmax*sigvmax
+        return k
+    covmat = vkern(drmat)
     
     #np.fill_diagonal(covmat, 1.0)
     
@@ -148,8 +164,6 @@ def velocity_gen(rstars, sigv=1.0e5, **svparams):
 
         # Step 2: Eigenvalue Decomposition
         eigenvalues, _ = eigh(matrix)
-        
-        print(eigenvalues)
 
         # Step 3: Tolerance Handling
         return np.all(eigenvalues >= -tol)
@@ -162,10 +176,12 @@ def velocity_gen(rstars, sigv=1.0e5, **svparams):
     else:
         print("The matrix is NOT positive semi-definite.")
         print('Projecting onto the PSD cone...')
-        covmat = force_psd(covmat, alpha=1e-2)
+        eigenvalues, _ = eigh(covmat)
+        print(np.amin(eigenvalues))
+        covmat = force_psd(covmat, alpha=0.001)
 
-    
-    
+    print(is_positive_semidefinite(covmat))
+
     # Perform Cholesky decomposition on the sparse covariance matrix
     cholesky_matrix = np.linalg.cholesky(covmat)
 
@@ -179,7 +195,7 @@ def velocity_gen(rstars, sigv=1.0e5, **svparams):
     
     vstars = np.array([vx, vy, vz])
     
-    plot_dvNN(rstars, vstars/1e5, **svparams)
+    plot_dvNN(rstars, vstars/1e5, vkern, **svparams)
 
     
   

@@ -47,12 +47,12 @@ alpha = 0.018
 delta_logP = 0.7
 
 
-sv0 = 10.**0.30530517 
-p = 0.72082734
+sv0 = 10.**0.21
+p = 0.65
 r0 = 1.0
 
 
-r0 = deg2rad*distance
+r0 = r0*deg2rad*distance
 sv0 *= mas2rad*distance*pc2cm/year2s
 
 no_hard_edge=True
@@ -473,7 +473,7 @@ if __name__=='__main__':
         mlim =0.1
         imf_cdf = get_imf_cdf()
         fnd = imf_cdf(mlim)
-        ntot = nobs / (1.-fnd)
+        ntot = int(nobs / (1.-fnd))
 
         print('Inferring total number of stars based on detection limit m_det = %.2lf Msol'%mlim)
         print('Fraction of stars below this threshold mass: %.2E'%fnd)
@@ -525,16 +525,18 @@ if __name__=='__main__':
                 tend_Myr = 3.0, gasparams=None, etai=0.005, etar=0.005, etau=0.01, dtmin_Myr=1e-8, \
                 rmin_pc=1e-8,dtjacc_Myr=0.05, load=True, ctype='smooth', force_incomp = False, \
                     rtrunc=50.0, nbin0=nbins0, aclose_au=200.0)
+    #sim.store_arrays(reread=True)
     #sim.evolve(reread=False)
 
     #cp.plot_dvNN_fromsim(sim, time=2.0, r0=r0, p=p, sv0=sv0)
     #cp.pairwise_analysis(sim, ndim=2)
     #cp.plot_3dpos(sim)
-    enchist = cp.encounter_analysis(sim)
+    #enchist = cp.encounter_analysis(sim)
+    #exit()
     #cp.encounter_analysis_binaries(sim)
     #irand = np.random.choice(np.arange(1000), size=10)
     #cp.compare_encanalysis(sim, irand)
-    cp.disc_evolution(sim, enchist, nt=1000, rinit=100.0)
+    cp.disc_evolution(sim, nt=10000, rinit=100.0)
 
     #sim = rb.setupSimulation(rs_all, vs_all*1e5*1e6*year2s/pc2cm, ms_all, units=('Myr', 'pc', 'Msun'))
     #sim.integrate(3.0)

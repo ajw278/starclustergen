@@ -3,6 +3,15 @@ scriptdir = os.path.dirname(os.path.realpath(__file__))
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+from matplotlib import ticker as mticker
+from matplotlib.ticker import AutoMinorLocator
+
+
+from matplotlib import cm
+from matplotlib.colors import Normalize
+from matplotlib.colors import LogNorm
+
+from matplotlib import gridspec
 
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.animation import FuncAnimation
@@ -395,6 +404,10 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 	if not os.path.isdir(direct):
 		os.makedirs(direct)
 
+	allx = np.array([])
+	alle = np.array([])
+	allm = np.array([])
+	allt = np.array([])
 	print('Starting encounter analysis...')
 	enchist = {}
 	ict=0
@@ -452,12 +465,30 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 		else:
 			x_order, m_order, e_order, t_order = np.load(direct+'/'+simulation.out+'_enchist_{0}.npy'.format(istar))
 		
+		allx = np.append(allx, x_order)
+		alle = np.append(alle, e_order)
+		allm = np.append(allm, m_order)
+		allt = np.append(allt, t_order)
 		enchist[istar] = np.array([x_order, m_order, e_order, t_order])
+
 
 		if len(x_order)>0:
 			xmin  = np.amin(x_order)
 			print('Closest encounter for i=%d : %.2e'%(istar, xmin))
+		
 		ict+=1
+	
+	plt.scatter(allt, alle)
+	plt.xscale('log')
+	plt.show()
+	plt.scatter(allt, allm)
+	plt.yscale('log')
+	plt.xscale('log')
+	plt.show()
+	plt.scatter(allt, allx)
+	plt.yscale('log')
+	plt.xscale('log')
+	plt.show()
 	return enchist
 	
 def Rtrunc(Rperi, Mstar, Rdisc, epert, Mpert):
@@ -484,38 +515,234 @@ def compute_discevol(tseries, Rinit, Mst, Rps, eps, Mps, tps):
 	for i, rp in enumerate(Rps):
 		rd_  = rdisc[-1]
 		rnew = Rtrunc(rp, Mst, rd_, eps[i], Mps[i])
-		print('Encounter params (rp, mst, rd, eps, mp):', rp, Mst, rd_, eps[i], Mps[i])
+		#print('Encounter params (rp, mst, rd, eps, mp):', rp, Mst, rd_, eps[i], Mps[i])
 		iolder = tseries>tps[i]
 		rdisc[iolder] = rnew
 	
 	return rdisc
-			
 
-def disc_evolution(simulation, enchist, nt=1000, rinit=100.0):
+
+def strong_enc_times(t_arr, disc_arr, drmin=0.01):
+	# Identify time steps where the radius decreases
+	print(disc_arr.shape, disc_arr[:, -1].shape, t_arr.shape)
+	d_arr = np.append(disc_arr, disc_arr[:, [-1]], axis=-1)
 	
-	m = copy.copy(simulation.ms)
+	drrat = np.diff(d_arr, axis=1)/disc_arr
+	strenc = (drrat < -drmin)
+	tgr = t_arr[np.newaxis,:]*np.ones(disc_arr.shape)
+
+	# Calculate the frequency of decreasing radius at each time step
+	tencs = tgr[strenc]
+	return tencs, drrat[strenc]
+
+def disc_evolution(simulation, nt=10000, rinit=100.0, tend=None):
+	
+	m = simulation.m
 	munits, runits, tunits, vunits = copy.copy(simulation.units_astro)
 
+	if tend is None:
+		t = simulation.t
+		tend = t[-1]*tunits
+
+	print("WARNING: I HAVE UPDATED UNITS HERE FOR A CASE WHERE UNITS WERE DIFFERENT IN THE ENCOUNTER RECOVERY -- PLEASE CHECK!!!!")
 	
 
-	if not os.path.isfile('disc_evol.npy'):
+	if not os.path.isfile('disc_evol_r.npy') or not os.path.isfile('disc_evol_t.npy'):
+		enchist = encounter_analysis(simulation)
 
-		t_arr = np.zeros(nt)
+		t_arr = np.linspace(0., tend, nt)
 
 		disc_arr = np.ones((len(m), nt))
 
 		for ikey in enchist:
 			x_order, m_order, e_order, t_order = enchist[ikey]
-			disc_arr[ikey] = compute_discevol(t_arr, rinit, m[ikey]*munits, x_order, e_order, m_order, t_order)
+			disc_arr[ikey] = compute_discevol(t_arr, rinit, m[ikey]*munits, x_order/au2pc, e_order, m_order*munits, t_order)
 
-			plt.plot(t_arr, disc_arr[ikey])
-			plt.savefig('rdisc_evol_%d.pdf', bbox_inches='tight', format='pdf')
-			plt.close()
+			#plt.plot(t_arr, disc_arr[ikey])
+			#plt.savefig('rdisc_evol_%d.pdf'%ikey, bbox_inches='tight', format='pdf')
+			#plt.show()
+		np.save('disc_evol_r', disc_arr)
+		np.save('disc_evol_t', t_arr)
+
 	else:
 		disc_arr = np.load('disc_evol_r.npy')
 		t_arr = np.load('disc_evol_t.npy')
 
 
+
+
+	drmin = 0.01
+	# Your existing code
+	tfilt = 0.01
+	tencs, drencs = strong_enc_times(t_arr, disc_arr, drmin=drmin)
+	tencs_str, drencs_str = strong_enc_times(t_arr, disc_arr, drmin=0.1)
+
+	ifenc = tencs > tfilt
+	tencs = tencs[ifenc]
+	drencs = drencs[ifenc]
+
+	# Create a 2D histogram
+	dtb = 0.3
+
+	bins_lt = np.linspace(np.log10(0.01),np.log10(3.0), 13)
+	bins_ldr = np.linspace(np.log10(drmin),0.0, 8)
+
+	bins_t = 10.**bins_lt
+	#bins_dr = 10.**bins_ldr
+	
+	hist, xedges, yedges = np.histogram2d(np.log10(tencs), np.log10(-drencs), bins=(bins_lt, bins_ldr))
+	hist /= 2.*np.diff(bins_t)[:, np.newaxis]
+	hist = np.log10(hist)
+	print(hist, xedges, yedges)
+
+	bc_ldr = (bins_ldr[1:]+bins_ldr[:-1])/2.
+	bc_lt = (bins_lt[1:]+bins_lt[:-1])/2.
+
+	# Create a figure with gridspec
+	fig = plt.figure(figsize=(8, 6))
+	gs = gridspec.GridSpec(2, 2, width_ratios=[1.0, 0.1], height_ratios=[1.5, 3], wspace=0.1, hspace=0.05)
+
+	# Scatter plot
+	ax1 = plt.subplot(gs[0])
+	#ax1.hist(tencs, bins=bins_t, histtype='step', alpha=0.7, edgecolor='black', density=False)
+	hist_values, bin_edges = np.histogram(np.log10(tencs), bins=bins_lt)
+	hist_values = np.asarray(hist_values, dtype=float)
+	hist_values /= np.diff(bins_t)*2.
+
+	print(bin_edges[:-1], hist_values)
+	# Manually plot the histogram using matplotlib
+	ax1.bar(bin_edges[:-1], hist_values, width=np.diff(bin_edges), edgecolor='black', facecolor='None', align='edge', label='$-\Delta R_\mathrm{out}/R_\mathrm{out} >0.01$')
+
+
+	hist_values, bin_edges = np.histogram(np.log10(tencs_str), bins=bins_lt)
+	hist_values = np.asarray(hist_values, dtype=float)
+	hist_values /= np.diff(bins_t)*2.
+
+	# Manually plot the histogram using matplotlib
+	ax1.bar(bin_edges[:-1], hist_values, width=np.diff(bin_edges), edgecolor='red', facecolor='None', align='edge', label='$-\Delta R_\mathrm{out}/R_\mathrm{out} >0.1$')
+
+	# 2D Histogram
+	ax2 = plt.subplot(gs[2], sharex=ax1)
+
+	print(bc_lt, bc_ldr, hist.T)
+	cax = ax2.pcolormesh(bc_lt, bc_ldr, hist.T, cmap='viridis', shading='nearest', vmin=0.0, vmax=4.0)	
+	ax2.scatter(np.log10(tencs), np.log10(-drencs), color='r', marker='o', s=1, alpha=0.1)
+
+	
+	ax2.set_xlabel('log. Time: $\log t$ [Myr]')
+	ax1.set_ylabel('Enc. rate [Myr$^{-1}$]')
+	ax2.set_ylabel('log. Trunc. frac.: $\log -\Delta R_\mathrm{out}/R_\mathrm{out}$')
+
+	# Histogram along the top
+	#ax3 = plt.subplot(gs[1], sharey=ax2)
+	
+
+	# Colorbar
+	cbar_ax = plt.subplot(gs[3])
+	plt.colorbar(cax, cax=cbar_ax, label='log. Enc. rate [Myr$^{-1}$]')
+	
+
+	# Set ticks on all sides for all panels
+	for ax in [ax1, ax2]:
+		ax.tick_params(which='both', left=True, top=True, right=True, bottom=True, direction='inout')
+
+	plt.setp(ax1.get_xticklabels(), visible=False)
+
+	ax1.set_yscale('log')
+	ax1.set_ylim([3., 2e4])
+	#ax1.set_ylim(0.5, 4.1)
+
+
+	#ax2.set_yscale('log')
+	#ax2.set_xscale('log')
+	#ax2.set_xlim([0.01, 3.0])
+	#ax2.set_ylim([0.01, 1.0])
+	ax2.set_xlim([-2., np.log10(3.0)])
+	ax2.set_ylim([-2., 0.0])
+
+
+	ax2.xaxis.set_minor_locator(AutoMinorLocator())	
+
+	ax1.yaxis.set_major_locator(mticker.LogLocator(numticks=999))
+	ax1.yaxis.set_minor_locator(mticker.LogLocator(numticks=999, subs=(.2, .4, .6, .8)))
+	ax1.grid(which='major', color='gray', linestyle=':')
+	ax1.legend(loc='best', fontsize=10)
+
+
+	# Adjust layout to remove white space between
+	#  panels
+	plt.subplots_adjust(wspace=0, hspace=0)
+
+	plt.savefig('encounter_summary.pdf', format='pdf', bbox_inches='tight')
+	# Show the plot
+	plt.show()
+
+
+
+	
+	tmin = 0.01
+
+	# Choose a subset of 10 logarithmically spaced times
+	subset_times = np.linspace(0.0, 3.0, num=10)
+
+	# Find the corresponding indices in t_arr for the chosen subset
+	subset_indices = np.searchsorted(t_arr, subset_times)
+
+	subset_indices[-1]  = -1
+
+	# Create a figure and axis
+	fig, ax = plt.subplots()
+
+	# Normalize the time values for color mapping
+	norm = Normalize(vmin=0.0, vmax=3.0)
+	color_map = cm.viridis(norm(t_arr[subset_indices]))
+
+	bins = np.linspace(0., 100., 11)
+
+	# Iterate over each time step in the subset and plot a separate histogram
+	ict = 0
+	for i in subset_indices:
+		
+		# Plot histogram with colored edges
+		n, bins, patches = plt.hist(disc_arr[:, i], bins=bins, histtype='step', edgecolor=color_map[ict], linewidth=1.5)
+		ict+=1
+
+	# Add a colorbar with logarithmic spacing
+	cbar = plt.colorbar(cm.ScalarMappable(norm=norm, cmap=cm.viridis), ax=ax, ticks=subset_times)
+	cbar.set_label('Time: $t$ [Myr]')
+	# Set ticks on all axes
+	ax.tick_params(top=True, right=True, direction='in')
+
+	plt.xlabel('Disc outer radius: $R_\mathrm{out}$ [au]')
+	plt.ylabel('Number of discs')
+	plt.yscale('log')
+	#plt.legend()
+	plt.savefig('disc_r_hist.pdf', format='pdf', bbox_inches='tight')
+	plt.show()
+
+
+	fig, ax = plt.subplots(figsize=(5.,4.))
+
+	# Plot all disc radii as faint black lines
+	plt.plot(t_arr, disc_arr.T, color='black', alpha=0.1, linewidth=1)
+
+	# Plot the median and mean as solid and dashed lines
+	median_radius = np.median(disc_arr, axis=0)
+	mean_radius = np.mean(disc_arr, axis=0)
+
+	plt.plot(t_arr, median_radius, color='red', linestyle='solid', linewidth=1.5, label='Median Radius')
+	plt.plot(t_arr, mean_radius, color='red', linestyle='dashed', linewidth=1.5, label='Mean Radius')
+
+	plt.xlabel('Time: $t$ [Myr]')
+	plt.ylabel('Outer disc radius: $R_\mathrm{out}$ [au]')
+	plt.xlim([0., 3.0])
+	plt.xscale('log')
+	plt.xlim([0.01, 3.0])
+	plt.ylim([0., rinit+1.])
+	ax.tick_params(which='both', top=True, bottom=True, left=True, right=True)
+	plt.legend(loc=3)
+	plt.savefig('disc_r_evol.pdf', format='pdf', bbox_inches='tight')
+	plt.show()
 
 	return t_arr, disc_arr
 
