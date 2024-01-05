@@ -90,7 +90,7 @@ def binary_fraction(logP,  M1):
         return 0.0
     
 def get_q_func(gamma1=0.4, gamma2=-0.7):
-    qsp = np.linspace(0.,1., 100)
+    qsp = np.linspace(0.1,1., 100)
     psp = qsp**gamma1
     psp[qsp>0.3] = (qsp[qsp>0.3]**gamma2)*(0.3**gamma1)/(0.3**gamma2)
     norm = np.trapz(psp, qsp)
@@ -346,10 +346,6 @@ def plot_pairs(rstars_phys):
     
     dbins, dhist = np.load('Taurus_fpairs.npy')[:]
 
-    print(dhist)
-    Nstars = np.sum(dhist)
-    print('Number of stars in Taurus:', Nstars)
-
     dhist /= np.trapz(dhist*2.*np.pi*dbins, dbins)
     
     plt.plot(dbins, dhist, marker='s', color='r', linewidth=1, label='Observed in Taurus')
@@ -557,12 +553,11 @@ if __name__=='__main__':
     irand = np.random.choice(np.arange(len(rs_all.T)), size=len(rs_all.T), replace=False)
     rs_all[2]  =rs_all[2, irand]"""
     nbins0= 0
-    
-    print(np.median(np.absolute(rs_all)),np.median(np.absolute(vs_all)), np.median(ms_all))
-    print(rs_all.shape, vs_all.shape)
     nbins0 = int(np.sum(bf))
 
-    sim = nbi.nbody6_cluster(rs_all.T, vs_all.T, ms_all,  outname='clustersim', dtsnap_Myr =0.0001, \
+    exit()
+
+    sim = nbi.nbody6_cluster(rs_all.T, vs_all.T, ms_all,  outname='clustersim', dtsnap_Myr =0.0003, \
                 tend_Myr = 3.0, gasparams=None, etai=0.005, etar=0.005, etau=0.01, dtmin_Myr=1e-8, \
                 rmin_pc=1e-8,dtjacc_Myr=0.05, load=True, ctype='smooth', force_incomp = False, \
                     rtrunc=50.0, nbin0=nbins0, aclose_au=200.0)

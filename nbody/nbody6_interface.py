@@ -258,6 +258,9 @@ class nbody6_cluster:
 				sys.exit()
 
 		self.dt = dt_round
+		self.dtjacc = self.dt
+		self.dtopt = self.dt
+		self.dtadj = self.dt
 
 		if hasattr(self, 'tends') and hasattr(self, 'idir'):
 			if len(self.tends)>1:
@@ -567,8 +570,8 @@ class nbody6_cluster:
 
 		if not restart is None and indict['KSTART']>2:
 			if indict['KSTART']==3 or indict['KSTART']==5:
-				indict['DELTAT'] = max(self.dt/10., min(self.dt, 1e-2))
-				indict['DTADJ'] = max(self.dtadj/10.,min(self.dtadj, 1e-2))
+				indict['DELTAT'] = max(self.dt/10., min(self.dt, 1e-3))
+				indict['DTADJ'] = max(self.dtadj/10.,min(self.dtadj, 1e-3))
 				
 			elif indict['KSTART']==4 or indict['KSTART']==5:
 				indict['ETAI'] /= 10.0 
@@ -616,10 +619,6 @@ class nbody6_cluster:
 		
 		
 		return instring
-		
-		
-		
-		
 		
 	def read_to_npy(self, full=False, force=False, checkQ=False, checkT=True, checkScale=False):
 	
@@ -990,14 +989,14 @@ class nbody6_cluster:
 				else:
 					print('Input file detected.')
 					
-				#RUN_STR =  NBODYEXE + " < {0} > {1}".format(self.out+'.input', self.out+'.output')
-				RUN_LST = [NBODYEXE, ' < {0}'.format(self.out+'.input'), '> {0}'.format(self.out+'.output')]
+				RUN_STR =  NBODYEXE + " < {0} > {1}".format(self.out+'.input', self.out+'.output')
+				#RUN_LST = [NBODYEXE, ' < {0}'.format(self.out+'.input'), '> {0}'.format(self.out+'.output')]
 				if len(outfiles)==0:
-					print(RUN_LST)
-					#command = cclass.Command(RUN_STR)
+					print(RUN_STR)
+					command = cclass.Command(RUN_STR)
 
-					#command.run(timeout=20000)
-					subprocess.run(RUN_LST) 
+					command.run(timeout=20000)
+					#subprocess.run(RUN_STR) 
 
 				else:
 					print('Output file detected.')	
@@ -1023,20 +1022,18 @@ class nbody6_cluster:
 						print('New attempt {0} starting at time {1}'.format(iatt, ttmp))
 						print(self.tends, ttmp)
 						print('T_end = {0}/{1}'.format(ttmp, tend))
-						inname = self.write_to_input(restart=3)
+						inname = self.write_to_input(restart=iatt)
 
-						RUN_LST_NEW = [NBODYEXE, ' < {0}'.format(inname+'.input'), '> {0}'.format(inname+'.output')]
-						#RUN_STR_NEW =  NBODYEXE + " < {0} > {1}".format(inname+'.input', inname+'.output')
-						print(RUN_LST_NEW)
-						#command = cclass.Command(RUN_STR_NEW)
-						#command.run(timeout=20000)
+						#RUN_LST_NEW = [NBODYEXE, ' < {0}'.format(inname+'.input'), '> {0}'.format(inname+'.output')]
+						RUN_STR_NEW =  NBODYEXE + " < {0} > {1}".format(inname+'.input', inname+'.output')
+						#print(RUN_LST_NEW)
+						
 						if suppress_restart:
 							print("Restart call suppressed. Have written a restart file in the sim. directory")
-							iatt = int(1e6)
-						elif reread:
-							rtmp, vtmp, mtmp, ttmp, tunits, munits, runits = self.read_to_npy(force=True, checkT=False)
 						else:
-							subprocess.run(RUN_LST_NEW) 
+							command = cclass.Command(RUN_STR_NEW)
+							command.run(timeout=20000)
+							#subprocess.run(RUN_STR_NEW) 
 							rtmp, vtmp, mtmp, ttmp, tunits, munits, runits = self.read_to_npy(force=True, checkT=False)
 					
 					iatt+=1
@@ -1047,8 +1044,6 @@ class nbody6_cluster:
 
 	def evolve(self, reread=True, suppress_restart=True):
 		if not self.complete:
-			print('Error')
-			exit()
 			self.run_nbody(reread=reread, suppress_restart=suppress_restart)
 		
 		self.store_arrays(reread=reread)
