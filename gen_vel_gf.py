@@ -102,7 +102,6 @@ def plot_dvNN(rs, vs, vkernel, **svparams):
     ctf = plt.contourf(D, V, np.log10(Z), levels=levels)"""
     sigvs  = sigv_pl(D, **svparams)
     
-    print(sigvs, D)
     
     levels = np.arange(-4.0, 0.2, 0.1)
     pdist = V*V*MB_dist(V*1e5, sigvs, nd=2)
@@ -141,7 +140,6 @@ def velocity_gen(rstars, sigv=1.0e5, rmax=100.0,  **svparams):
 
     # Apply the covariance function element-wise to obtain the covariance matrix
     #covmat = correlation_function(drmat, lmin=0.1*np.median(drmat), **svparams)
-    print(np.median(drmat))
     """covmat = RQ_Kernel(drmat, lmin=0.1, alpha=10000.0)
     covmat *= (sigv*sigv)"""
 
@@ -177,10 +175,8 @@ def velocity_gen(rstars, sigv=1.0e5, rmax=100.0,  **svparams):
         print("The matrix is NOT positive semi-definite.")
         print('Projecting onto the PSD cone...')
         eigenvalues, _ = eigh(covmat)
-        print(np.amin(eigenvalues))
         covmat = force_psd(covmat, alpha=0.001)
 
-    print(is_positive_semidefinite(covmat))
 
     # Perform Cholesky decomposition on the sparse covariance matrix
     cholesky_matrix = np.linalg.cholesky(covmat)

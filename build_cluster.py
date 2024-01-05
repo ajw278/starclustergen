@@ -56,8 +56,8 @@ r0 = r0*deg2rad*distance
 sv0 *= mas2rad*distance*pc2cm/year2s
 
 no_hard_edge=True
-minlogP = 5.0
-maxlogP = 9.0
+minlogP = 4.5
+maxlogP = 8.0
 
 # Define the binary fraction functions
 def f_logP_lt_1(M1):
@@ -70,6 +70,7 @@ def f_logP_5_5(M1):
     return 0.078 - 0.05 * np.log10(M1) + 0.04 * np.log10(M1)**2
 
 def binary_fraction(logP,  M1):
+    M1 = max(M1, 0.8)
     if logP<minlogP:
         return 0.0
     elif logP>maxlogP:
@@ -88,7 +89,7 @@ def binary_fraction(logP,  M1):
     else:
         return 0.0
     
-def get_q_func_Msol(gamma1=0.4, gamma2=-0.7):
+def get_q_func(gamma1=0.4, gamma2=-0.7):
     qsp = np.linspace(0.,1., 100)
     psp = qsp**gamma1
     psp[qsp>0.3] = (qsp[qsp>0.3]**gamma2)*(0.3**gamma1)/(0.3**gamma2)
@@ -97,15 +98,23 @@ def get_q_func_Msol(gamma1=0.4, gamma2=-0.7):
     return interpolate.interp1d(qsp, psp, bounds_error=False, fill_value=0.0)
 
 def get_gammavals(logP):
-    return 0.4, -0.7
+    if logP<2.0:
+        return 0.3, -0.6
+    elif logP<4.0:
+        #Note: used 0, not -0.1 here to avoid numerical error. Large uncertainty anyway from M&dS 17
+        return 0.0, -0.5
+    elif logP<6.0:
+        return 0.4, -0.4
+    else:
+        return 0.5, -1.1
 
 def get_flogP_func(M1):
     logPsp = np.linspace(1.0, 10., 100)
     flogP = np.asarray([binary_fraction(logP, M1=M1) for logP in logPsp])
     return interpolate.interp1d(logPsp, flogP, bounds_error=False, fill_value=0.0)
 
-def make_icdf(func, xmin=0.0, xmax=8.):
-    xsp = np.linspace(xmin, xmax, 1000)
+def make_icdf(func, xmin=0.0, xmax=8.0):
+    xsp = np.linspace(xmin, xmax, 1400)
     fv = func(xsp)
     fv /= np.trapz(fv, xsp)
     cdf = np.cumsum(fv)
@@ -113,6 +122,27 @@ def make_icdf(func, xmin=0.0, xmax=8.):
     cdf /= cdf[-1]
     return interpolate.interp1d(cdf,xsp)
 
+"""
+#Generate a colour plot showing the binary frequency in terms of mass, logP
+M1_values = np.linspace(0.3, 5.0, 100)
+logP_values = np.linspace(minlogP, 6.5, 100)
+
+M1_mesh, logP_mesh = np.meshgrid(M1_values, logP_values)
+
+binary_fraction_values = np.vectorize(binary_fraction)(logP_mesh, M1_mesh)
+
+# Plotting
+fig, ax = plt.subplots(figsize=(5, 4))
+plt.pcolormesh(M1_mesh, logP_mesh, np.log10(binary_fraction_values), cmap='hot', shading='auto')
+
+plt.xlabel('Primary mass: $M_1$ [$M_\odot$]')
+plt.ylabel('log. Period: $\log P$ [days]')
+
+cbar = plt.colorbar(label='log. Fraction per period dex.: $\log \mathrm{d}f_\mathrm{bin}/\mathrm{d}\log P$')
+ax.tick_params(which='both', right=True, left=True, top=True, bottom=True)
+# Show the plot
+plt.savefig('binary_dist.png', bbox_inches='tight', format='png')
+plt.show()"""
 
 """# Generate data for plotting
 logP_values = np.linspace(0.2, 8.0, 500)
@@ -134,14 +164,14 @@ def get_kroupa_imf(m1=0.08, p1=0.3, m2=0.5, p2=1.3, m3=1.0, p3=2.3, mmin=0.08):
     msp = np.logspace(-2, 2., 1000)
     
     xi  = msp**-p1
-    f1 = (m1**-p1)/(m2**-p2)
-    xi[msp>m1] = f1*(msp[msp>m1]**-p2)
-    f2 = f1 * (m2**-p2)/(m3**-p3)
-    xi[msp>m2] = f2*(msp[msp>m2]**-p3)
+    f1 = (m2**-p1)/(m2**-p2)
+    f2 = f1*(m3**-p3)/(m3**-p3)
+    xi[msp>m2] = f1*(msp[msp>m2]**-p2)
+    xi[msp>m3] = f2*(msp[msp>m3]**-p3)
     xi[msp<mmin] = 0.0
     
     xi /= np.trapz(xi, msp)
-    
+
     return interpolate.interp1d(msp, xi)
 
 def get_imf_cdf():
@@ -153,6 +183,7 @@ def get_imf_cdf():
     imf = imf_func(msp)
     cdf = np.cumsum(imf)
     cdf /=cdf[-1]
+
     
     return  interpolate.interp1d(msp, cdf)
 
@@ -194,18 +225,18 @@ def generate_binary_population(mstars):
         u = np.random.uniform()
         if u<pbinary:
             u2 = np.random.uniform()
-            icdf_logP = make_icdf(flogP_func, xmin=1.0, xmax=8.)
+            icdf_logP = make_icdf(flogP_func, xmin=1.0, xmax=maxlogP)
             logP_i = icdf_logP(u2)
             
             g1, g2 = get_gammavals(logP_i)
             
-            qfunc = get_q_func_Msol(gamma1=g1, gamma2=g2)
+            qfunc = get_q_func(gamma1=g1, gamma2=g2)
             icdf_q = make_icdf(qfunc, xmin=0.1, xmax=1.)
             u3 = np.random.uniform()
             q_i = icdf_q(u3)
             
             #Eccentricity randomly distributed.. appears to be! 
-            e_companions[i] = 0.6 # np.random.uniform()*
+            e_companions[i] = np.random.uniform()*0.9
 
             # Determine if a binary is present based on the probability
             binary_flags[i] = 1
@@ -291,16 +322,15 @@ def plot_pairs(rstars_phys):
     plt.yscale('log')
     plt.savefig('corrfuncs.pdf', format='pdf', bbox_inches='tight')
     plt.show()
-
-    Ndim = rstars.shape[0]
+    Ndim=2
 
     print(rstars.shape)
-    rstar_comp = rstars[:2].T
+    rstar_comp = rstars[:Ndim].T
     print(rstar_comp.shape)
     dr = cdist(rstar_comp, rstar_comp, 'euclidean')
     dr = dr[np.triu_indices(len(rstars[0]), k=1)]
     
-    binsr = np.logspace(-4.0, 2, 25)
+    binsr = np.logspace(-4.5, 2, 30)
     if Ndim==2:
         weights = len(dr)/(2.*np.pi*dr)
     else:
@@ -311,24 +341,30 @@ def plot_pairs(rstars_phys):
     dbin = np.diff(bin_edges)
     bin_cent = (bin_edges[:-1]+bin_edges[1:])/2.
     hist /= np.trapz(hist*2.*np.pi*bin_cent, bin_cent)
-    hist *= len(dr)
     # Create a histogram
-    dsp = np.logspace(-3.5, 2., 100)
-    plt.plot(bin_cent, hist, marker='o', color='k', linewidth=1, label='Model')
+    plt.plot(bin_cent, hist, marker='o', color='k', linewidth=1, label='Model ICs')
     
     dbins, dhist = np.load('Taurus_fpairs.npy')[:]
+
+    print(dhist)
+    Nstars = np.sum(dhist)
+    print('Number of stars in Taurus:', Nstars)
+
+    dhist /= np.trapz(dhist*2.*np.pi*dbins, dbins)
     
-    plt.plot(dbins, dhist, marker='s', color='r', linewidth=1, label='Observed')
+    plt.plot(dbins, dhist, marker='s', color='r', linewidth=1, label='Observed in Taurus')
     
     plt.xlabel('Angular separation: $\Delta \\theta$ [deg]')
-    plt.ylabel('Pair surface density: $\Sigma_*$ [pc$^{-2}$]')
+    plt.ylabel('Normed pair surface density: $\hat{\Sigma}_\mathrm{pairs}$ [degrees$^{-2}$]')
     plt.xscale('log')
     plt.yscale('log')
-    #plt.ylim([1e-7, 1e3])
+    plt.ylim([1e-4, 1e4])
     plt.xlim([1e-4, 30.0])
     plt.grid(True)
+    plt.legend(loc='best')
     ax.tick_params(which='both', right=True, bottom=True, left=True, top=True, direction='out')
     # Display the histogram
+    plt.savefig('initial_condition.pdf', format='pdf', bbox_inches='tight')
     plt.show()
 
 
@@ -489,15 +525,20 @@ if __name__=='__main__':
         ms = assign_masses(rs)
         bf, logP, q, e = generate_binary_population(ms)
         xb, vb = generate_binary_pv(ms, bf, logP, q, e)
+        #cp.binary_props(bf, ms, logP, q, e)
 
         rs_all, vs_all, ms_all = add_binaries(rs,  ms, bf, xb/pc2cm, vb, q, vs=vs)
+
+        print('Total stars with binaries:', len(rs_all[0]))
+        print('Binary fraction:', np.sum(bf)/float(len(ms)))
 
         np.save('rstars_wbin.npy', rs_all)
         
         vs_all /= km2cm
         
-        
-        cp.plot_dvNN(rs_all.T, vs_all.T)
+        plot_pairs(rs_all)
+
+        cp.plot_dvNN(rs_all.T, vs_all.T,ndim=3, r0=r0, p=p, sv0=sv0)
         np.save('sim_ics_bins', np.array([bf, logP, q, e]))
         np.save('sim_ics_r', rs_all)
         np.save('sim_ics_v', vs_all)

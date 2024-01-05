@@ -96,9 +96,9 @@ def plot_dvNN(r, v, ndim=2, **svparams):
 	velocity_differences = np.linalg.norm(velocities - velocities[nearest_neighbors], axis=1)
 
 	# Create a scatter plot
-	fig, ax = plt.subplots(figsize=(8, 6))
+	fig, ax = plt.subplots(figsize=(5, 4))
 
-	dsp = np.logspace(-2, 1.5, 40)
+	dsp = np.logspace(-4, 1.5, 50)
 	vsp = np.logspace(-2, 1.5, 30)
 	D, V = np.meshgrid(dsp, vsp, indexing='ij')
 
@@ -108,7 +108,7 @@ def plot_dvNN(r, v, ndim=2, **svparams):
 
 	if len(svparams)>0:
 		levels = np.arange(-4.0, 0.2, 0.1)
-		pdist = V*V*MB_dist(V*1e5, sigvs, nd=2)
+		pdist = V*MB_dist(V, sigvs/1e5, nd=ndim)
 		pdist /= np.amax(pdist, axis=1)[:, np.newaxis]
 		ctf=plt.contourf(D, V, np.log10(pdist), levels=levels)
 		plt.colorbar(ctf, label='Normalised MB probability: $\log [v g(v)]$')
@@ -129,8 +129,8 @@ def plot_dvNN(r, v, ndim=2, **svparams):
 	plt.ylabel('%dD velocity difference: $\Delta v$ [km/s]'%ndim)
 	plt.xscale('log')
 	plt.yscale('log')
-	plt.xlim([1e-2, 10.])
-	plt.ylim([2e-2, 5.])
+	plt.xlim([1e-5, 10.])
+	plt.ylim([2e-2, 10.])
 	plt.savefig('vdist_%dD.pdf'%ndim, bbox_inches='tight', format='pdf')
 
 	plt.show()
@@ -142,10 +142,10 @@ def MB_dist(v_, sig, nd=3):
 
 
 def svkep(dr):
-	return 2933.0*np.sqrt(1./dr)
+	return 32.8*1e2*np.sqrt(1./dr)
 
 def sigv_pl(dr, r0=1.0, p=1., sv0=1.0):
-    return np.sqrt((sv0*(dr/r0)**p)**2+ svkep(dr)**2)
+    return np.sqrt((sv0*(dr/r0)**p)**2) #+ svkep(dr)**2)
 
 def plot_dvNN_fromsim(simulation, time=2.0, **plparams):
 
@@ -534,6 +534,96 @@ def strong_enc_times(t_arr, disc_arr, drmin=0.01):
 	# Calculate the frequency of decreasing radius at each time step
 	tencs = tgr[strenc]
 	return tencs, drrat[strenc]
+
+
+def binary_props(bf, ms, logP, q, e):
+
+
+	bins_lm = np.linspace(np.log10(0.08),np.log10(3.0), 13)
+	bins_lP = np.linspace(4.,10.0, 7)
+
+	#bins_dr = 10.**bins_ldr
+	# Create a figure with gridspec
+	fig = plt.figure(figsize=(8, 6))
+	gs = gridspec.GridSpec(2, 2, width_ratios=[1.0, 0.1], height_ratios=[1.5, 3], wspace=0.1, hspace=0.05)
+
+	# Scatter plot
+	ax1 = plt.subplot(gs[0])
+	#ax1.hist(tencs, bins=bins_t, histtype='step', alpha=0.7, edgecolor='black', density=False)
+	hist_values, bin_edges = np.histogram(np.log10(ms[np.where(bf)]), bins=bins_lm)
+	hist_values_all, bin_edges = np.histogram(np.log10(ms), bins=bins_lm)
+	hist_values_nb, bin_edges = np.histogram(np.log10(ms[np.where(~bf)]), bins=bins_lm)
+	hist_values = np.asarray(hist_values, dtype=float)
+	#hist_values /= hist_values_all
+
+
+	hist, xedges, yedges = np.histogram2d(np.log10(ms[np.where(bf)]), logP[np.where(bf)], bins=(bins_lm, bins_lP))
+	hist /= hist_values_all[:, np.newaxis]
+	hist = np.log10(hist)
+
+
+	bc_lP = (bins_lP[1:]+bins_lP[:-1])/2.
+	bc_lm = (bins_lm[1:]+bins_lm[:-1])/2.
+	
+
+	# Manually plot the histogram using matplotlib
+	ax1.bar(bin_edges[:-1], hist_values, width=np.diff(bin_edges), edgecolor='black', facecolor='None', align='edge', label='Binaries')
+	ax1.bar(bin_edges[:-1], hist_values_nb, width=np.diff(bin_edges), edgecolor='red', facecolor='None', align='edge', label='Non-binaries')
+
+	# 2D Histogram
+	ax2 = plt.subplot(gs[2], sharex=ax1)
+
+	cax = ax2.pcolormesh(bc_lm, bc_lP, hist.T, cmap='viridis', shading='nearest', vmin=-2., vmax=1.0)	
+	ax2.scatter(np.log10(ms[np.where(bf)]), logP[np.where(bf)], color='r', marker='o', s=1, alpha=0.1)
+
+	
+	ax2.set_xlabel('log. Primary mass: $\log M_*$ [$M_\odot$]')
+	ax2.set_ylabel('log. Orbital period: $\log P$ [days]')
+	ax1.set_ylabel('Binary fraction')
+
+	# Histogram along the top
+	#ax3 = plt.subplot(gs[1], sharey=ax2)
+	
+
+	# Colorbar
+	cbar_ax = plt.subplot(gs[3])
+	plt.colorbar(cax, cax=cbar_ax, label='log. Binary Fraction')
+	
+
+	# Set ticks on all sides for all panels
+	for ax in [ax1, ax2]:
+		ax.tick_params(which='both', left=True, top=True, right=True, bottom=True, direction='inout')
+
+	plt.setp(ax1.get_xticklabels(), visible=False)
+
+	ax1.set_yscale('log')
+	#ax1.set_ylim([0., 1.])
+	#ax1.set_ylim(0.5, 4.1)
+
+
+	#ax2.set_yscale('log')
+	#ax2.set_xscale('log')
+	#ax2.set_xlim([0.01, 3.0])
+	#ax2.set_ylim([0.01, 1.0])
+	ax2.set_xlim([bins_lm[0], bins_lm[-1]])
+	ax2.set_ylim([bins_lP[0], bins_lP[-1]])
+
+
+	ax2.xaxis.set_minor_locator(AutoMinorLocator())	
+
+	ax1.yaxis.set_major_locator(mticker.LogLocator(numticks=999))
+	ax1.yaxis.set_minor_locator(mticker.LogLocator(numticks=999, subs=(.2, .4, .6, .8)))
+	ax1.grid(which='major', color='gray', linestyle=':')
+	ax1.legend(loc='best', fontsize=10)
+
+
+	# Adjust layout to remove white space between
+	#  panels
+	plt.subplots_adjust(wspace=0, hspace=0)
+
+	plt.savefig('encounter_summary.pdf', format='pdf', bbox_inches='tight')
+	# Show the plot
+	plt.show()
 
 def disc_evolution(simulation, nt=10000, rinit=100.0, tend=None):
 	
