@@ -324,9 +324,7 @@ def plot_pairs(rstars_phys):
     plt.show()
     Ndim=2
 
-    print(rstars.shape)
     rstar_comp = rstars[:Ndim].T
-    print(rstar_comp.shape)
     dr = cdist(rstar_comp, rstar_comp, 'euclidean')
     dr = dr[np.triu_indices(len(rstars[0]), k=1)]
     
@@ -554,8 +552,6 @@ if __name__=='__main__':
     rs_all[2]  =rs_all[2, irand]"""
     nbins0= 0
     nbins0 = int(np.sum(bf))
-
-    exit()
 
     sim = nbi.nbody6_cluster(rs_all.T, vs_all.T, ms_all,  outname='clustersim', dtsnap_Myr =0.0003, \
                 tend_Myr = 3.0, gasparams=None, etai=0.005, etar=0.005, etau=0.01, dtmin_Myr=1e-8, \
