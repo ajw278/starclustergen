@@ -646,7 +646,12 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tend=None):
 
 		for ikey in enchist:
 			x_order, m_order, e_order, t_order = enchist[ikey]
-			disc_arr[ikey] = compute_discevol(t_arr, rinit, m[ikey]*munits, x_order/au2pc, e_order, m_order*munits, t_order)
+
+			#x_order= np.append(x_order, logsx[inghbr]*runits/au2pc) 
+			#e_order= np.append(e_order, logse[inghbr]) 
+			#t_order = np.append(t_order, logst[inghbr]*tunits) 
+			#m_order = np.append(m_order, np.ones(len(logsx[inghbr]))*cm[inghbr]*munits)
+			disc_arr[ikey] = compute_discevol(t_arr, rinit, m[ikey]*munits, x_order, e_order, m_order, t_order)
 
 			#plt.plot(t_arr, disc_arr[ikey])
 			#plt.savefig('rdisc_evol_%d.pdf'%ikey, bbox_inches='tight', format='pdf')
