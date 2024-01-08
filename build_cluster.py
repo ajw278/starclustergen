@@ -558,7 +558,7 @@ if __name__=='__main__':
                 rmin_pc=1e-8,dtjacc_Myr=0.05, load=True, ctype='smooth', force_incomp = False, \
                     rtrunc=50.0, nbin0=nbins0, aclose_au=200.0)
     #sim.store_arrays(reread=True)
-    #sim.evolve(reread=False)
+    sim.evolve(reread=False)
 
     cp.pairwise_analysis(sim, ndim=2)
     cp.plot_dvNN_fromsim(sim, time=1.0, r0=r0, p=p, sv0=sv0)
