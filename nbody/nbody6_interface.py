@@ -898,7 +898,7 @@ class nbody6_cluster:
 			self.vs = vs_all[-1]
 			self.t = times
 		else:
-			self.t =0.0
+			self.t =[0.0]
 		#self.save()
 
 		return self.rs, self.vs, self.ms, self.t[-1], tunits_ast, munits_ast, runits_ast 
