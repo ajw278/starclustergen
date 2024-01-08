@@ -271,7 +271,7 @@ def pairwise_analysis(simulation, ndim=2):
 		plt.plot(bc, hist, color='r', linewidth=1, label='Taurus (observed)')
 		plt.scatter(bc, hist, marker='o', s=20, edgecolors='red', facecolors='white', linewidths=0.5)
 	# Color bar
-	cbar = plt.colorbar(scalar_map, label='Time (t)',  ax=plt.gca())
+	cbar = plt.colorbar(scalar_map, label='Time: t [Myr]',  ax=plt.gca())
 
 	# Logarithmic Scaling
 	plt.xscale('log')
@@ -284,8 +284,8 @@ def pairwise_analysis(simulation, ndim=2):
 
 	ax.tick_params(which='both', axis='both', left=True, right=True, bottom=True, top=True)
 	# Display
-	plt.xlabel('Pair Separation Distance')
-	plt.ylabel('Pair Distribution Function')
+	plt.xlabel('Pair separation distance: $\Delta R$ [pc]')
+	plt.ylabel('Normalised pair surface density: $\hat{\Sigma}_\mathrm{pairs}$ [pc$^{-2}$]')
 	plt.legend(loc='best')
 	plt.savefig('pairwise_separation.pdf', bbox_inches='tight', format='pdf')
 	plt.show()
@@ -478,7 +478,7 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 		
 		ict+=1
 	
-	plt.scatter(allt, alle)
+	"""plt.scatter(allt, alle)
 	plt.xscale('log')
 	plt.show()
 	plt.scatter(allt, allm)
@@ -488,7 +488,7 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 	plt.scatter(allt, allx)
 	plt.yscale('log')
 	plt.xscale('log')
-	plt.show()
+	plt.show()"""
 	return enchist
 	
 def Rtrunc(Rperi, Mstar, Rdisc, epert, Mpert):
@@ -522,18 +522,32 @@ def compute_discevol(tseries, Rinit, Mst, Rps, eps, Mps, tps):
 	return rdisc
 
 
-def strong_enc_times(t_arr, disc_arr, drmin=0.01):
+def strong_enc_times(t_arr, disc_arr, drmin=0.01, split=False):
 	# Identify time steps where the radius decreases
 	print(disc_arr.shape, disc_arr[:, -1].shape, t_arr.shape)
 	d_arr = np.append(disc_arr, disc_arr[:, [-1]], axis=-1)
-	
 	drrat = np.diff(d_arr, axis=1)/disc_arr
 	strenc = (drrat < -drmin)
 	tgr = t_arr[np.newaxis,:]*np.ones(disc_arr.shape)
+	if not split:
 
-	# Calculate the frequency of decreasing radius at each time step
-	tencs = tgr[strenc]
-	return tencs, drrat[strenc]
+		# Calculate the frequency of decreasing radius at each time step
+		tencs = tgr[strenc]
+		return tencs, drrat[strenc]
+	else:
+		print(strenc)
+		print(tgr.shape, strenc.shape)
+		print(drrat.shape)
+		print(drrat[strenc].shape)
+		tencs_splt = []
+		drrat_splt = []
+		for ist in range(len(tgr)):
+			tencs_splt.append(tgr[ist][strenc[ist]])
+			drrat_splt.append(drrat[ist][strenc[ist]])
+		
+		return tencs_splt, drrat_splt
+
+
 
 
 def binary_props(bf, ms, logP, q, e):
@@ -634,9 +648,6 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tend=None):
 		t = simulation.t
 		tend = t[-1]*tunits
 
-	print("WARNING: I HAVE UPDATED UNITS HERE FOR A CASE WHERE UNITS WERE DIFFERENT IN THE ENCOUNTER RECOVERY -- PLEASE CHECK!!!!")
-	
-
 	if not os.path.isfile('disc_evol_r.npy') or not os.path.isfile('disc_evol_t.npy'):
 		enchist = encounter_analysis(simulation)
 
@@ -652,6 +663,7 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tend=None):
 			#t_order = np.append(t_order, logst[inghbr]*tunits) 
 			#m_order = np.append(m_order, np.ones(len(logsx[inghbr]))*cm[inghbr]*munits)
 			disc_arr[ikey] = compute_discevol(t_arr, rinit, m[ikey]*munits, x_order, e_order, m_order, t_order)
+			#print(m[ikey]*munits, m_order,  x_order, t_order)
 
 			#plt.plot(t_arr, disc_arr[ikey])
 			#plt.savefig('rdisc_evol_%d.pdf'%ikey, bbox_inches='tight', format='pdf')
@@ -667,10 +679,10 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tend=None):
 
 
 	drmin = 0.01
-	# Your existing code
 	tfilt = 0.01
-	tencs, drencs = strong_enc_times(t_arr, disc_arr, drmin=drmin)
-	tencs_str, drencs_str = strong_enc_times(t_arr, disc_arr, drmin=0.1)
+	tencs, drencs = strong_enc_times(t_arr, disc_arr, drmin=drmin, split=False)
+	tencs_splt, drence_splt = strong_enc_times(t_arr, disc_arr, drmin=drmin, split=True)
+	tencs_str, drencs_str = strong_enc_times(t_arr, disc_arr, drmin=0.1, split=False)
 
 	ifenc = tencs > tfilt
 	tencs = tencs[ifenc]
@@ -721,7 +733,10 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tend=None):
 
 	print(bc_lt, bc_ldr, hist.T)
 	cax = ax2.pcolormesh(bc_lt, bc_ldr, hist.T, cmap='viridis', shading='nearest', vmin=0.0, vmax=4.0)	
-	ax2.scatter(np.log10(tencs), np.log10(-drencs), color='r', marker='o', s=1, alpha=0.1)
+	for ist in range(len(tencs_splt)):
+		ax2.plot(np.log10(tencs_splt[ist]), np.log10(-drence_splt[ist]), color='pink', alpha=0.1, linewidth=1)
+	ax2.scatter(np.log10(tencs), np.log10(-drencs), color='pink', marker='o', s=2, alpha=0.5)
+
 
 	
 	ax2.set_xlabel('log. Time: $\log t$ [Myr]')

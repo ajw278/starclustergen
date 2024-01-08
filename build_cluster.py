@@ -57,7 +57,7 @@ sv0 *= mas2rad*distance*pc2cm/year2s
 
 no_hard_edge=True
 minlogP = 4.5
-maxlogP = 8.0
+maxlogP = 8.5
 
 # Define the binary fraction functions
 def f_logP_lt_1(M1):
@@ -558,14 +558,14 @@ if __name__=='__main__':
                 rmin_pc=1e-8,dtjacc_Myr=0.05, load=True, ctype='smooth', force_incomp = False, \
                     rtrunc=50.0, nbin0=nbins0, aclose_au=200.0)
     #sim.store_arrays(reread=True)
-    sim.evolve(reread=True)
+    #sim.evolve(reread=False)
 
-    #cp.plot_dvNN_fromsim(sim, time=2.0, r0=r0, p=p, sv0=sv0)
-    #cp.pairwise_analysis(sim, ndim=2)
+    cp.pairwise_analysis(sim, ndim=2)
+    cp.plot_dvNN_fromsim(sim, time=1.0, r0=r0, p=p, sv0=sv0)
     #cp.plot_3dpos(sim)
-    enchist = cp.encounter_analysis(sim)
+    #enchist = cp.encounter_analysis(sim)
     #exit()
-    cp.encounter_analysis_binaries(sim)
+    #cp.encounter_analysis_binaries(sim)
     #irand = np.random.choice(np.arange(1000), size=10)
     #cp.compare_encanalysis(sim, irand)
     cp.disc_evolution(sim, nt=10000, rinit=100.0)
