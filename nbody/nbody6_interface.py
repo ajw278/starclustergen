@@ -522,9 +522,9 @@ class nbody6_cluster:
 		#binding energy per unit mass fror hard binary
 		indict['ECLOSE'] = self.eclose
 		#Gmin relative two-body pert for unperturbed motion
-		indict['GMIN'] = 1e-7
+		indict['GMIN'] = 1e-8
 		#Secondary termination param for soft binaries
-		indict['GMAX'] = 0.01
+		indict['GMAX'] = 0.001
 		#Max time-step 
 		indict['SMAX'] = 1.0
 		#2.35 20.0 0.08 0 0 0.001 0 1.0

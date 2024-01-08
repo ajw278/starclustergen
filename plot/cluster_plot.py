@@ -387,7 +387,7 @@ def compare_encanalysis(simulation, istars, direct_s='enchist', direct_b='enchis
 	plt.show()
 		
 
-def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=1000, rmax = None,  time=3.0, plotall=True, direct='enchist'):
+def encounter_analysis(simulation, plotall=True, direct='enchist'):
 
 	print('Copying simulation arrays (may take time if they are large...)')
 	t = simulation.t
@@ -440,9 +440,9 @@ def encounter_analysis(simulation, save=False, init_rad = 100.0, res=300,subset=
 				m_order = np.append(m_order, np.ones(len(logsx[inghbr]))*cm[inghbr]*munits)
 
 				if plotall:
-					plt.plot(t*tunits, np.linalg.norm(cx[inghbr], axis=1)*runits/au2pc, color=mpl_cols[icol%len(mpl_cols)], linewidth=2)
-					plt.plot(t*tunits, np.linalg.norm(cxb[inghbr], axis=1)*runits/au2pc, linestyle='dashed', color='r', linewidth=1)
-					plt.scatter(np.array(logst[inghbr])*tunits, np.array(logsx[inghbr])*runits/au2pc, color=mpl_cols[icol%len(mpl_cols)], marker='+')
+					plt.scatter(t*tunits, np.linalg.norm(cx[inghbr], axis=1)*runits/au2pc, color=mpl_cols[icol%len(mpl_cols)], marker='o', s=1)
+					#plt.plot(t*tunits, np.linalg.norm(cxb[inghbr], axis=1)*runits/au2pc, linestyle='dashed', color='r', linewidth=1)
+					plt.scatter(np.array(logst[inghbr])*tunits, np.array(logsx[inghbr])*runits/au2pc, color=mpl_cols[icol%len(mpl_cols)], marker='+', s=30)
 				icol+=1
 
 			if plotall:
@@ -691,8 +691,8 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tend=None):
 	# Create a 2D histogram
 	dtb = 0.3
 
-	bins_lt = np.linspace(np.log10(0.01),np.log10(3.0), 13)
-	bins_ldr = np.linspace(np.log10(drmin),0.0, 8)
+	bins_lt = np.linspace(np.log10(0.01),np.log10(3.0), 8)
+	bins_ldr = np.linspace(np.log10(drmin),0.0, 7)
 
 	bins_t = 10.**bins_lt
 	#bins_dr = 10.**bins_ldr
@@ -732,10 +732,10 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tend=None):
 	ax2 = plt.subplot(gs[2], sharex=ax1)
 
 	print(bc_lt, bc_ldr, hist.T)
-	cax = ax2.pcolormesh(bc_lt, bc_ldr, hist.T, cmap='viridis', shading='nearest', vmin=0.0, vmax=4.0)	
+	cax = ax2.pcolormesh(bc_lt, bc_ldr, hist.T, cmap='viridis', shading='nearest', vmin=0.0, vmax=3.5)	
 	for ist in range(len(tencs_splt)):
-		ax2.plot(np.log10(tencs_splt[ist]), np.log10(-drence_splt[ist]), color='pink', alpha=0.1, linewidth=1)
-	ax2.scatter(np.log10(tencs), np.log10(-drencs), color='pink', marker='o', s=2, alpha=0.5)
+		ax2.plot(np.log10(tencs_splt[ist]), np.log10(-drence_splt[ist]), color='pink', alpha=0.2, linewidth=1)
+	ax2.scatter(np.log10(tencs), np.log10(-drencs), color='pink', marker='s', edgecolor='gray', s=5, alpha=0.5)
 
 
 	
@@ -759,7 +759,7 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tend=None):
 	plt.setp(ax1.get_xticklabels(), visible=False)
 
 	ax1.set_yscale('log')
-	ax1.set_ylim([3., 2e4])
+	ax1.set_ylim([3., 3e4])
 	#ax1.set_ylim(0.5, 4.1)
 
 

@@ -146,7 +146,9 @@ def get_closeapproach(dr, dv, m1, m2, T, add=1, G=1.0):
 	n = np.sqrt(mu / np.absolute(a)**3)
 
 	# Calculate the mean anomaly
-	M =  e*np.sinh(E) -E
+	M =  E - e*np.sin(E)
+
+	print(E, e, np.sinh(E))
 
 	#Finally, get periastron itme
 	T_peri = T - np.sign(add)*M / n
@@ -173,7 +175,10 @@ def encounter_params(cx, cv, cm, ct, mstar):
 			
 			if cxmag[ix][ixmag] == cxmagmin[ixmag]:
 				if cvdotx[ixmag-1]<0.0 and cvdotx[ixmag]>0.0:
-					lm.append(ixmag-1)
+					if cxmag[ix][ixmag]< cxmag[ix][ixmag-1]:
+						lm.append(ixmag)
+					else:
+						lm.append(ixmag-1)
 					dts.append(ct[ixmag]-ct[ixmag-1])
 
 	 	#local_minima = np.array(local_minima)
@@ -187,8 +192,10 @@ def encounter_params(cx, cv, cm, ct, mstar):
 			#ls = hsmag*hsmag/mu
 			e, rp, dtperi = get_closeapproach(cx[ix][lm], cv[ix][lm], mstar,cm[ix],0.0)
 
+			print(e, rp, dtperi)
+
 			for ienc, dt in enumerate(dts):
-				if dtperi[ienc]<dt and dtperi[ienc]>0.0:
+				if (dtperi[ienc]<dt):
 					ttmp[ienc] = ct[lm[ienc]]+dtperi[ienc]
 					etmp[ienc] = e[ienc]
 					xtmp[ienc] = rp[ienc]
@@ -196,6 +203,7 @@ def encounter_params(cx, cv, cm, ct, mstar):
 					ttmp[ienc] = ct[lm[ienc]]
 					etmp[ienc] = e[ienc]
 					xtmp[ienc] = cxmag[ix][lm[ienc]]
+
 			ce_x.append(xtmp)
 			ce_eccs.append(etmp)
 			ce_time.append(ttmp)
