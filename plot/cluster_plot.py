@@ -71,7 +71,7 @@ def resample_times(times, dt):
 
     return inc_inds
     
-def plot_dvNN(r, v, ndim=2, **svparams):
+def plot_dvNN(r, v, ndim=3, **svparams):
 	
 	positions  = r[:, :ndim]
 	velocities = v[:, :ndim]
@@ -150,14 +150,16 @@ def sigv_pl(dr, r0=1.0, p=1., sv0=1.0):
 def plot_dvNN_fromsim(simulation, time=2.0, **plparams):
 
 	
-	t = simulation.t
-	r = simulation.r
-	v = simulation.v
+	t = copy.copy(simulation.t)
+	r = copy.copy(simulation.r)
+	v = copy.copy(simulation.v)
 	munits, runits, tunits, vunits = simulation.units_astro
+	munits_SI, runits_SI, tunits_SI = simulation.units_SI
 	
 	it = np.argmin(np.absolute(t*tunits - time))
+
 	
-	plot_dvNN(r[it], v[it], **plparams)
+	plot_dvNN(r[it]*runits, v[it]*1e-3*runits_SI/tunits_SI, **plparams)
 	
 
 
@@ -390,10 +392,10 @@ def compare_encanalysis(simulation, istars, direct_s='enchist', direct_b='enchis
 def encounter_analysis(simulation, plotall=True, direct='enchist'):
 
 	print('Copying simulation arrays (may take time if they are large...)')
-	t = simulation.t
-	r =simulation.r
-	v =simulation.v
-	m = simulation.m
+	t =  copy.copy(simulation.t)
+	r = copy.copy(simulation.r)
+	v = copy.copy(simulation.v)
+	m = copy.copy(simulation.m)
 	print('Encounter analysis...')
 	munits, runits, tunits, vunits = copy.copy(simulation.units_astro)
 	munits_SI, runits_SI, tunits_SI  = copy.copy(simulation.units_SI)
@@ -416,11 +418,13 @@ def encounter_analysis(simulation, plotall=True, direct='enchist'):
 		if not os.path.isfile(direct+'/'+simulation.out+'_enchist_{0}.npy'.format(istar)):
 			print('Generating global encounter history for star {0}... '.format(istar))
 			cx, cv, cm, cn = cc.encounter_history_istar(istar, r, v, m, 2)
+			cx, cv, cm = cc.stable_binary_filter(m[istar],cx, cv, cm, t, G=1.0)
 			cxb, cvb, cmb = cc.binary_filter(cx, cv, cm)
 			x_order = np.array([])
 			e_order = np.array([])
 			m_order = np.array([])
 			t_order = np.array([])
+
 
 			print('Obtaining neighbour lists for star {0}.'.format(istar))
 		
@@ -440,7 +444,7 @@ def encounter_analysis(simulation, plotall=True, direct='enchist'):
 				m_order = np.append(m_order, np.ones(len(logsx[inghbr]))*cm[inghbr]*munits)
 
 				if plotall:
-					plt.scatter(t*tunits, np.linalg.norm(cx[inghbr], axis=1)*runits/au2pc, color=mpl_cols[icol%len(mpl_cols)], marker='o', s=1)
+					plt.plot(t*tunits, np.linalg.norm(cxb[inghbr], axis=1)*runits/au2pc, color=mpl_cols[icol%len(mpl_cols)]) #, s=1)
 					#plt.plot(t*tunits, np.linalg.norm(cxb[inghbr], axis=1)*runits/au2pc, linestyle='dashed', color='r', linewidth=1)
 					plt.scatter(np.array(logst[inghbr])*tunits, np.array(logsx[inghbr])*runits/au2pc, color=mpl_cols[icol%len(mpl_cols)], marker='+', s=30)
 				icol+=1
@@ -450,7 +454,7 @@ def encounter_analysis(simulation, plotall=True, direct='enchist'):
 				plt.ylabel('Separation [au]')
 				plt.yscale('log')
 				plt.savefig(simulation.out+'_enchist_{0}.pdf'.format(istar), format='pdf', bbox_inches='tight')
-				plt.close()
+				plt.show()
 			print(x_order,t_order, e_order)
 			chron = np.argsort(t_order)
 			x_order = x_order[chron]
@@ -522,7 +526,7 @@ def compute_discevol(tseries, Rinit, Mst, Rps, eps, Mps, tps):
 	return rdisc
 
 
-def strong_enc_times(t_arr, disc_arr, drmin=0.01, split=False):
+def strong_enc_times(t_arr, disc_arr, drmin=0.01, split=False, enckeys=None):
 	# Identify time steps where the radius decreases
 	print(disc_arr.shape, disc_arr[:, -1].shape, t_arr.shape)
 	d_arr = np.append(disc_arr, disc_arr[:, [-1]], axis=-1)
@@ -541,11 +545,18 @@ def strong_enc_times(t_arr, disc_arr, drmin=0.01, split=False):
 		print(drrat[strenc].shape)
 		tencs_splt = []
 		drrat_splt = []
+		if not enckeys is None:
+			star_index = []
 		for ist in range(len(tgr)):
 			tencs_splt.append(tgr[ist][strenc[ist]])
 			drrat_splt.append(drrat[ist][strenc[ist]])
-		
-		return tencs_splt, drrat_splt
+			if not enckeys is None:
+				star_index.append(enckeys[ist])
+		if enckeys is None:
+			return tencs_splt, drrat_splt
+		else:
+			return tencs_splt, drrat_splt, star_index
+			
 
 
 
@@ -639,16 +650,34 @@ def binary_props(bf, ms, logP, q, e):
 	# Show the plot
 	plt.show()
 
-def disc_evolution(simulation, nt=10000, rinit=100.0, tend=None):
+def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  tend=None):
 	
+	#Take stellar masses from simulation
 	m = simulation.m
+
+	#Extract physical units
 	munits, runits, tunits, vunits = copy.copy(simulation.units_astro)
+
+	#Copy the positions and times from the simulation
+	r = copy.copy(simulation.r)
+	t = copy.copy(simulation.t)
+
+	#Convert to parsecs and Myr
+	r *= runits
+	t *= tunits
+
+	#Select the positional snapshot to plot at the end
+	itplot = np.argmin(np.absolute(t-tplot))
+	r = r[itplot]
+
+
 
 	if tend is None:
 		t = simulation.t
 		tend = t[-1]*tunits
 
-	if not os.path.isfile('disc_evol_r.npy') or not os.path.isfile('disc_evol_t.npy'):
+	#Perform the analysis of where encounter occur, and their influence on the protoplanetary discs
+	if not os.path.isfile('disc_evol_r.npy') or not os.path.isfile('disc_evol_t.npy') or not os.path.isfile('enchist_keys.npy'):
 		enchist = encounter_analysis(simulation)
 
 		t_arr = np.linspace(0., tend, nt)
@@ -657,6 +686,8 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tend=None):
 
 		for ikey in enchist:
 			x_order, m_order, e_order, t_order = enchist[ikey]
+
+			
 
 			#x_order= np.append(x_order, logsx[inghbr]*runits/au2pc) 
 			#e_order= np.append(e_order, logse[inghbr]) 
@@ -670,27 +701,34 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tend=None):
 			#plt.show()
 		np.save('disc_evol_r', disc_arr)
 		np.save('disc_evol_t', t_arr)
+		enckeys = np.array([ikey for ikey in enchist], dtype=int)
+		np.save('enchist_keys', enckeys)
 
 	else:
 		disc_arr = np.load('disc_evol_r.npy')
 		t_arr = np.load('disc_evol_t.npy')
-
+		enckeys = np.load('enchist_keys.npy')
+	
 
 
 
 	drmin = 0.01
 	tfilt = 0.01
+	#Find the times and change in disc radius for weak encounters 
 	tencs, drencs = strong_enc_times(t_arr, disc_arr, drmin=drmin, split=False)
-	tencs_splt, drence_splt = strong_enc_times(t_arr, disc_arr, drmin=drmin, split=True)
+
+	#Find the times and change in disc radius for strong encounters, split into indvidual stars
+	tencs_splt, drence_splt, istar_splt = strong_enc_times(t_arr, disc_arr, drmin=drmin, split=True, enckeys=enckeys)
+
+	#Find the times and change in disc radius for strong encounters (not split up)
 	tencs_str, drencs_str = strong_enc_times(t_arr, disc_arr, drmin=0.1, split=False)
 
+	#Only include encounters for stars older than lower time limit
 	ifenc = tencs > tfilt
 	tencs = tencs[ifenc]
 	drencs = drencs[ifenc]
 
 	# Create a 2D histogram
-	dtb = 0.3
-
 	bins_lt = np.linspace(np.log10(0.01),np.log10(3.0), 8)
 	bins_ldr = np.linspace(np.log10(drmin),0.0, 7)
 
@@ -760,13 +798,6 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tend=None):
 
 	ax1.set_yscale('log')
 	ax1.set_ylim([3., 3e4])
-	#ax1.set_ylim(0.5, 4.1)
-
-
-	#ax2.set_yscale('log')
-	#ax2.set_xscale('log')
-	#ax2.set_xlim([0.01, 3.0])
-	#ax2.set_ylim([0.01, 1.0])
 	ax2.set_xlim([-2., np.log10(3.0)])
 	ax2.set_ylim([-2., 0.0])
 
@@ -787,6 +818,30 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tend=None):
 	# Show the plot
 	plt.show()
 
+
+	tencs_splt, drence_splt, istar_splt
+
+	ikeyplot = []
+	for iist, ist in enumerate(istar_splt):
+		if np.any(np.absolute(tencs_splt[iist]-tplot)<dtplot):
+			ikeyplot.append(ist)
+
+	ikeyplot= np.array(ikeyplot, dtype='int')
+	# Plotting the locations of all stars at time tplot
+	plt.figure(figsize=(8, 6))
+	plt.scatter(r[:, 0], r[:, 1], label='All Stars', color='blue', s=10)
+
+	# Highlighting the locations of stars with strong encounters
+	for ikey in ikeyplot:
+		plt.scatter(r[ikey, 0], r[ikey, 1], label=f'Star {ikey} (Strong Encounter)', color='red', marker='*', s=50)
+
+	plt.xlabel('X Position (parsecs)')
+	plt.ylabel('Y Position (parsecs)')
+	plt.title(f'Star Locations at t = {tplot} Myr')
+	plt.legend()
+	plt.grid(True)
+	plt.savefig('star_locations_and_encounters.pdf', format='pdf', bbox_inches='tight')
+	plt.show()
 
 
 	

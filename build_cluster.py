@@ -533,6 +533,7 @@ if __name__=='__main__':
         plot_pairs(rs_all)
 
         cp.plot_dvNN(rs_all.T, vs_all.T,ndim=3, r0=r0, p=p, sv0=sv0)
+
         np.save('sim_ics_bins', np.array([bf, logP, q, e]))
         np.save('sim_ics_r', rs_all)
         np.save('sim_ics_v', vs_all)
@@ -562,8 +563,9 @@ if __name__=='__main__':
 
     #cp.pairwise_analysis(sim, ndim=2)
     #cp.plot_dvNN_fromsim(sim, time=1.0, r0=r0, p=p, sv0=sv0)
+
     #cp.plot_3dpos(sim)
-    enchist = cp.encounter_analysis(sim)
+    #enchist = cp.encounter_analysis(sim)
     #exit()
     #cp.encounter_analysis_binaries(sim)
     #irand = np.random.choice(np.arange(1000), size=10)

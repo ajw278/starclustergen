@@ -3,9 +3,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Function to set up a binary system with given mass ratio and orbital elements
-def setup_binary(m1, m2, semimajor_axis, eccentricity, inclination, argument_of_periapsis, longitude_of_ascending_node, true_anomaly):
+def setup_binary(m1, m2, semimajor_axis, eccentricity, inclination, argument_of_periapsis, longitude_of_ascending_node, true_anomaly, G=6.6743e-8):
     sim = rebound.Simulation()
-    sim.G = 6.6743e-8
+    sim.G = G
     # Add primary and secondary bodies
     sim.add(m=m1)
     sim.add(m=m2, a=semimajor_axis, e=eccentricity, inc=inclination, omega=argument_of_periapsis, Omega=longitude_of_ascending_node, f=true_anomaly)
@@ -25,10 +25,10 @@ def get_initial_conditions(simulation):
 
     return p1, p2, v1, v2
 
-def get_binary_xv(m1, q, a, e, i, omega, Omega, f, centre_primary=False):
+def get_binary_xv(m1, q, a, e, i, omega, Omega, f, centre_primary=False, G=6.6743e-8):
     
     m2 = q*m1  # mass of secondary
-    sim = setup_binary(m1, m2, a, e, i, omega, Omega, f)
+    sim = setup_binary(m1, m2, a, e, i, omega, Omega, f, G=G)
     x1, x2, v1, v2 = get_initial_conditions(sim)
     vbary = (v1*m1 + v2*m2)/(m1+m2)
     xbary = (x1*m1 + x2*m2)/(m1+m2)
