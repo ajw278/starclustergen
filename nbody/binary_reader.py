@@ -620,8 +620,8 @@ if __name__=='__main__':
 	allbin = AllBinaries(istars)
 	allbin.create_binary_arrays()
 	plt.rc('text', usetex=True)
-	irand = np.random.choice(istars, size=100)
-	irand  = np.arange(10)
+	irand = np.random.choice(istars, size=200)
+	#irand  = np.arange(10)
 	fig, ax = plt.subplots(figsize=(5.,4.))
 	for istar in irand:
 		t,bf, ic, a, e, m2 = allbin.get_history(istar)
@@ -632,7 +632,8 @@ if __name__=='__main__':
 	plt.xlabel('Time [Myr]')
 	plt.ylabel('Semi-major axis: $a$ [au]')
 	plt.ylim([1., 2e4])
-	plt.savefig('sma_100bin.pdf', format='pdf', bbox_inches='tight')
+	plt.xlim([0.,3.])
+	plt.savefig('sma_200bin.pdf', format='pdf', bbox_inches='tight')
 	plt.show()
 	
 	fig, ax = plt.subplots(figsize=(5.,4.))
@@ -645,6 +646,7 @@ if __name__=='__main__':
 	plt.xlabel('Time [Myr]')
 	plt.ylabel('Pericentre distance: $a(1-e)$ [au]')
 	plt.ylim([1., 2e4])
+	plt.xlim([0.,3.])
 	plt.savefig('rperi_100bin.pdf', format='pdf', bbox_inches='tight')
 	plt.show()
 	exit()
