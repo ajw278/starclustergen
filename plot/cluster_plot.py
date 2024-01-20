@@ -49,6 +49,11 @@ CB_color_cycle = ['#377eb8', '#ff7f00', '#4daf4a','#f781bf', '#a65628', '#984ea3
 CB_color_cycle = ['#377eb8', '#ff7f00', '#4daf4a','#999999','#f781bf', '#a65628', '#e41a1c','#984ea3', '#e41a1c', '#dede00']
 
 
+def mstar_filter(rstar, vstar, mstar, mmin):
+	massb  =  mstar>mmin
+	imass = np.arange(len(mstar))[massb]
+	return copy.copy(rstar)[:, massb], copy.copy(vstar)[:, massb], copy.copy(mstar)[:, massb], imass
+
 def resample_times(times, dt):
     """
     Resample the times array to have approximately uniform time steps.
@@ -119,14 +124,13 @@ def plot_dvNN(r, v, ndim=3, **svparams):
 	else:
 		plt.scatter(nearest_neighbor_distances, velocity_differences, c='k', edgecolor='gray', s=5)
 		
-	# Add labels and title
 
 	ax.tick_params(which='both', axis='both', right=True, top=True, left=True, bottom=True)
 
 	plt.yscale('log')
 	plt.xscale('log')
-	plt.xlabel('%dD separation: $\Delta r$ [pc]'%ndim)
-	plt.ylabel('%dD velocity difference: $\Delta v$ [km/s]'%ndim)
+	plt.xlabel('%dD separation of nearest neighbour: $\Delta r$ [pc]'%ndim)
+	plt.ylabel('%dD velocity difference of nearest neighbour: $\Delta v$ [km/s]'%ndim)
 	plt.xscale('log')
 	plt.yscale('log')
 	plt.xlim([1e-5, 10.])
@@ -147,7 +151,7 @@ def svkep(dr):
 def sigv_pl(dr, r0=1.0, p=1., sv0=1.0):
     return np.sqrt((sv0*(dr/r0)**p)**2) #+ svkep(dr)**2)
 
-def plot_dvNN_fromsim(simulation, time=2.0, **plparams):
+def plot_dvNN_fromsim(simulation, time=2.0, mmin=0.1, **plparams):
 
 	
 	t = copy.copy(simulation.t)
@@ -155,15 +159,16 @@ def plot_dvNN_fromsim(simulation, time=2.0, **plparams):
 	v = copy.copy(simulation.v)
 	munits, runits, tunits, vunits = simulation.units_astro
 	munits_SI, runits_SI, tunits_SI = simulation.units_SI
+
+	r, v, m, istars = mstar_filter(r, v, m, mmin)
 	
 	it = np.argmin(np.absolute(t*tunits - time))
 
-	
 	plot_dvNN(r[it]*runits, v[it]*1e-3*runits_SI/tunits_SI, **plparams)
 	
 
 
-def plot_3dpos(simulation, dim=None, save=True, rlim=20.0, dtmin=0.01):
+def plot_3dpos(simulation, dim=None, save=True, rlim=30.0, dtmin=0.01):
 
 	def update(frame, data, times, sc, time_text):
 		sc._offsets3d = (data[frame, :, 0], data[frame, :, 1], data[frame,:, 2])
@@ -203,18 +208,18 @@ def plot_3dpos(simulation, dim=None, save=True, rlim=20.0, dtmin=0.01):
 	print(tunits, munits, runits, vunits)
 	print(r.shape)
 	
-	print(t)
-	print(np.median(np.absolute(r[~np.isnan(r)])))
 	r*=runits
 	t*=tunits
-	print(t)
-	print(np.median(np.absolute(r[~np.isnan(r)])))
 	if dtmin is None:
 		dtmin = np.amin(np.diff(t))
+	print('Minimum time-step: ', dtmin)
 	incinds = resample_times(t, dtmin)
+	print('Number of snapshots:', len(incinds))
 	r_ = r[incinds]
 	t_ = t[incinds]
-	
+	r_[np.isnan(r_)] = np.inf
+	rmed  = np.median(r_, axis=1, keepdims=True)
+	r_ -= rmed
 	create_3d_stars_animation(r_, t_,filename='stars_animation.mp4')
 	
 
@@ -389,7 +394,7 @@ def compare_encanalysis(simulation, istars, direct_s='enchist', direct_b='enchis
 	plt.show()
 		
 
-def encounter_analysis(simulation, plotall=True, direct='enchist'):
+def encounter_analysis(simulation, plotall=True, direct='enchist',plotstars=[227,  397, 450, 481, 608, 649, 655, 736]):
 
 	print('Copying simulation arrays (may take time if they are large...)')
 	t =  copy.copy(simulation.t)
@@ -415,7 +420,7 @@ def encounter_analysis(simulation, plotall=True, direct='enchist'):
 	ict=0
 	for istar in istars:
 		print('Scanning encounters for i={2} ({0}/{1})'.format(ict+1, len(istars), istar))
-		if not os.path.isfile(direct+'/'+simulation.out+'_enchist_{0}.npy'.format(istar)):
+		if not os.path.isfile(direct+'/'+simulation.out+'_enchist_{0}.npy'.format(istar)) or istar in plotstars:
 			print('Generating global encounter history for star {0}... '.format(istar))
 			cx, cv, cm, cn = cc.encounter_history_istar(istar, r, v, m, 2)
 			cx, cv, cm = cc.stable_binary_filter(m[istar],cx, cv, cm, t, G=1.0)
@@ -432,8 +437,8 @@ def encounter_analysis(simulation, plotall=True, direct='enchist'):
 			logsx, logse, logst = cc.encounter_params(np.array(cxb), np.array(cvb), np.array(cmb), t, float(m[istar]))
 			icol=0
 			
-			if plotall:
-				plt.figure(figsize=(4.,4.))
+			if plotall or istar in plotstars:
+				fig, ax = plt.subplots(figsize=(5.,4.))
 
 			print('Organising neighbour interactions...')
 			print('Number of neighbours:', cn)
@@ -443,16 +448,20 @@ def encounter_analysis(simulation, plotall=True, direct='enchist'):
 				t_order = np.append(t_order, logst[inghbr]*tunits) 
 				m_order = np.append(m_order, np.ones(len(logsx[inghbr]))*cm[inghbr]*munits)
 
-				if plotall:
-					plt.plot(t*tunits, np.linalg.norm(cxb[inghbr], axis=1)*runits/au2pc, color=mpl_cols[icol%len(mpl_cols)]) #, s=1)
+				if plotall or istar in plotstars:
+					plt.plot(t*tunits, np.linalg.norm(cxb[inghbr], axis=1)*runits/au2pc, color=mpl_cols[icol%len(mpl_cols)], linewidth=1) #, s=1)
 					#plt.plot(t*tunits, np.linalg.norm(cxb[inghbr], axis=1)*runits/au2pc, linestyle='dashed', color='r', linewidth=1)
 					plt.scatter(np.array(logst[inghbr])*tunits, np.array(logsx[inghbr])*runits/au2pc, color=mpl_cols[icol%len(mpl_cols)], marker='+', s=30)
 				icol+=1
 
-			if plotall:
+			if plotall or istar in plotstars:
 				plt.xlabel('Time [Myr]')
 				plt.ylabel('Separation [au]')
 				plt.yscale('log')
+				#plt.title('Star %d'%istar)
+				plt.xlim([0., 1.5])
+				plt.ylim([10., 1e5])
+				ax.tick_params(which='both', left=True, right=True, top=True, bottom=True)
 				plt.savefig(simulation.out+'_enchist_{0}.pdf'.format(istar), format='pdf', bbox_inches='tight')
 				plt.show()
 			print(x_order,t_order, e_order)
@@ -513,12 +522,15 @@ def Rtrunc(Rperi, Mstar, Rdisc, epert, Mpert):
 
 	return Rnew
 
-def compute_discevol(tseries, Rinit, Mst, Rps, eps, Mps, tps):
+def compute_discevol(tseries, Rinit, Mst, Rps, eps, Mps, tps, rmin=10.0):
 
 	rdisc = Rinit*np.ones(tseries.shape)
 	for i, rp in enumerate(Rps):
 		rd_  = rdisc[-1]
-		rnew = Rtrunc(rp, Mst, rd_, eps[i], Mps[i])
+		if rp<10.0:
+			rnew = 0.1
+		else:
+			rnew = Rtrunc(rp, Mst, rd_, eps[i], Mps[i])
 		#print('Encounter params (rp, mst, rd, eps, mp):', rp, Mst, rd_, eps[i], Mps[i])
 		iolder = tseries>tps[i]
 		rdisc[iolder] = rnew
@@ -650,16 +662,19 @@ def binary_props(bf, ms, logP, q, e):
 	# Show the plot
 	plt.show()
 
-def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  tend=None):
+def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  tend=None, mmin=0.1):
 	
 	#Take stellar masses from simulation
-	m = simulation.m
+	m = copy.copy(simulation.m)
 
 	#Extract physical units
 	munits, runits, tunits, vunits = copy.copy(simulation.units_astro)
 
 	#Copy the positions and times from the simulation
 	r = copy.copy(simulation.r)
+	#r, v, m, istars = mstar_filter(simulation.r, simulation.v, simulation.m, mmin/munits)
+	istars = np.where(m>mmin/munits)
+
 	t = copy.copy(simulation.t)
 
 	#Convert to parsecs and Myr
@@ -670,8 +685,6 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  ten
 	itplot = np.argmin(np.absolute(t-tplot))
 	r = r[itplot]
 
-
-
 	if tend is None:
 		t = simulation.t
 		tend = t[-1]*tunits
@@ -679,12 +692,16 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  ten
 	#Perform the analysis of where encounter occur, and their influence on the protoplanetary discs
 	if not os.path.isfile('disc_evol_r.npy') or not os.path.isfile('disc_evol_t.npy') or not os.path.isfile('enchist_keys.npy'):
 		enchist = encounter_analysis(simulation)
+		if os.path.isfile('enchist_keys.npy'):
+			istars = np.load('enchist_keys.npy')
+		else:
+			np.save('enchist_keys', istars)
 
 		t_arr = np.linspace(0., tend, nt)
 
 		disc_arr = np.ones((len(m), nt))
 
-		for ikey in enchist:
+		for ikey in istars:
 			x_order, m_order, e_order, t_order = enchist[ikey]
 
 			
@@ -701,13 +718,11 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  ten
 			#plt.show()
 		np.save('disc_evol_r', disc_arr)
 		np.save('disc_evol_t', t_arr)
-		enckeys = np.array([ikey for ikey in enchist], dtype=int)
-		np.save('enchist_keys', enckeys)
 
 	else:
 		disc_arr = np.load('disc_evol_r.npy')
 		t_arr = np.load('disc_evol_t.npy')
-		enckeys = np.load('enchist_keys.npy')
+		istars = np.load('enchist_keys.npy')
 	
 
 
@@ -718,7 +733,7 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  ten
 	tencs, drencs = strong_enc_times(t_arr, disc_arr, drmin=drmin, split=False)
 
 	#Find the times and change in disc radius for strong encounters, split into indvidual stars
-	tencs_splt, drence_splt, istar_splt = strong_enc_times(t_arr, disc_arr, drmin=drmin, split=True, enckeys=enckeys)
+	tencs_splt, drence_splt, istar_splt = strong_enc_times(t_arr, disc_arr, drmin=drmin, split=True, enckeys=istars)
 
 	#Find the times and change in disc radius for strong encounters (not split up)
 	tencs_str, drencs_str = strong_enc_times(t_arr, disc_arr, drmin=0.1, split=False)
@@ -819,7 +834,7 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  ten
 	plt.show()
 
 
-	tencs_splt, drence_splt, istar_splt
+	#tencs_splt, drence_splt, istar_splt
 
 	ikeyplot = []
 	for iist, ist in enumerate(istar_splt):
@@ -828,19 +843,21 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  ten
 
 	ikeyplot= np.array(ikeyplot, dtype='int')
 	# Plotting the locations of all stars at time tplot
-	plt.figure(figsize=(8, 6))
-	plt.scatter(r[:, 0], r[:, 1], label='All Stars', color='blue', s=10)
+	fig, ax = plt.subplots(figsize=(8, 6))
+	plt.scatter(r[istars, 0], r[istars, 1], color='k', s=4)
 
 	# Highlighting the locations of stars with strong encounters
+	ienc=0
 	for ikey in ikeyplot:
-		plt.scatter(r[ikey, 0], r[ikey, 1], label=f'Star {ikey} (Strong Encounter)', color='red', marker='*', s=50)
-
-	plt.xlabel('X Position (parsecs)')
-	plt.ylabel('Y Position (parsecs)')
-	plt.title(f'Star Locations at t = {tplot} Myr')
-	plt.legend()
-	plt.grid(True)
-	plt.savefig('star_locations_and_encounters.pdf', format='pdf', bbox_inches='tight')
+		plt.scatter(r[ikey, 0], r[ikey, 1], label=f'Star {ikey}', color=CB_color_cycle[ienc],  marker='*', s=100)
+		ienc+=1
+	plt.xlabel('$x$ Position [pc]')
+	plt.ylabel('$y$ Position [pc]')
+	plt.legend(ncol=2)
+	#plt.grid(True)
+	ax.tick_params(which='both', top=True, right=True,left=True, bottom=True)
+	
+	plt.savefig('spatial_encounters.pdf', format='pdf', bbox_inches='tight')
 	plt.show()
 
 

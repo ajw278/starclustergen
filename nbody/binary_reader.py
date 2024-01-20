@@ -620,7 +620,7 @@ if __name__=='__main__':
 	allbin = AllBinaries(istars)
 	allbin.create_binary_arrays()
 	plt.rc('text', usetex=True)
-	irand = np.random.choice(istars, size=200)
+	irand = np.random.choice(istars, size=200, replace=False)
 	#irand  = np.arange(10)
 	fig, ax = plt.subplots(figsize=(5.,4.))
 	for istar in irand:

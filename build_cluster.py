@@ -89,12 +89,16 @@ def binary_fraction(logP,  M1):
     else:
         return 0.0
     
-def get_q_func(gamma1=0.4, gamma2=-0.7):
-    qsp = np.linspace(0.1,1., 100)
+def get_q_func(gamma1=0.4, gamma2=-0.7, Ftwin=0.05):
+    qsp = np.linspace(0.1,1., 1000)
     psp = qsp**gamma1
     psp[qsp>0.3] = (qsp[qsp>0.3]**gamma2)*(0.3**gamma1)/(0.3**gamma2)
+    norm1 = np.trapz(psp, qsp)
+    plus = Ftwin*norm1/(0.05*(1.-Ftwin))
+    psp[qsp>0.95] += plus
     norm = np.trapz(psp, qsp)
     psp /= norm
+    
     return interpolate.interp1d(qsp, psp, bounds_error=False, fill_value=0.0)
 
 def get_gammavals(logP):
@@ -117,14 +121,14 @@ def make_icdf(func, xmin=0.0, xmax=8.0):
     xsp = np.linspace(xmin, xmax, 1400)
     fv = func(xsp)
     fv /= np.trapz(fv, xsp)
-    cdf = np.cumsum(fv)
+    cdf = np.cumsum(fv*np.gradient(xsp))
     cdf -= cdf[0]
     cdf /= cdf[-1]
     return interpolate.interp1d(cdf,xsp)
 
-"""
+
 #Generate a colour plot showing the binary frequency in terms of mass, logP
-M1_values = np.linspace(0.3, 5.0, 100)
+"""M1_values = np.logspace(-2, 1.0, 100)
 logP_values = np.linspace(minlogP, 6.5, 100)
 
 M1_mesh, logP_mesh = np.meshgrid(M1_values, logP_values)
@@ -134,6 +138,7 @@ binary_fraction_values = np.vectorize(binary_fraction)(logP_mesh, M1_mesh)
 # Plotting
 fig, ax = plt.subplots(figsize=(5, 4))
 plt.pcolormesh(M1_mesh, logP_mesh, np.log10(binary_fraction_values), cmap='hot', shading='auto')
+#plt.pcolormesh(M1_mesh, logP_mesh, binary_fraction_values, cmap='hot', shading='auto', vmin=0.0, vmax=0.1)
 
 plt.xlabel('Primary mass: $M_1$ [$M_\odot$]')
 plt.ylabel('log. Period: $\log P$ [days]')
@@ -141,10 +146,11 @@ plt.ylabel('log. Period: $\log P$ [days]')
 cbar = plt.colorbar(label='log. Fraction per period dex.: $\log \mathrm{d}f_\mathrm{bin}/\mathrm{d}\log P$')
 ax.tick_params(which='both', right=True, left=True, top=True, bottom=True)
 # Show the plot
+plt.xscale('log')
 plt.savefig('binary_dist.png', bbox_inches='tight', format='png')
-plt.show()"""
+plt.show()
 
-"""# Generate data for plotting
+# Generate data for plotting
 logP_values = np.linspace(0.2, 8.0, 500)
 q_value = 0.5  # Replace with the desired value for mass ratio q
 
@@ -157,17 +163,35 @@ plt.ylabel('Binary Fraction')
 plt.title('Binary Fraction as a function of log P (for M1=20)')
 plt.legend()
 plt.grid(True)
-plt.show()"""
+plt.show()
+exit()"""
 
-def get_kroupa_imf(m1=0.08, p1=0.3, m2=0.5, p2=1.3, m3=1.0, p3=2.3, mmin=0.08):
+"""def get_kroupa_imf(p1=0.3, m1=0.03, m2=0.5, p2=1.3, m3=1.0, p3=2.3, mmin=0.08):
     
     msp = np.logspace(-2, 2., 1000)
     
     xi  = msp**-p1
     f1 = (m2**-p1)/(m2**-p2)
     f2 = f1*(m3**-p3)/(m3**-p3)
-    xi[msp>m2] = f1*(msp[msp>m2]**-p2)
+    xi[msp>m2] = f1*(msp[msp>m1]**-p2)
     xi[msp>m3] = f2*(msp[msp>m3]**-p3)
+    xi[msp<mmin] = 0.0
+    
+    xi /= np.trapz(xi, msp)
+
+    return interpolate.interp1d(msp, xi)"""
+
+def get_kroupa_imf(m1=0.08, p1=0.3, m2=0.5, p2=1.3, m3=1.0, p3=2.3, p4=2.7,  mmin=0.01):
+    
+    msp = np.logspace(-2.1, 2., 10000)
+    
+    xi  = msp**-p1
+    f1 = (m1**-p1)/(m1**-p2)
+    f2 = f1*(m2**-p2)/(m2**-p3)
+    f3 = f2*(m3**-p3)/(m3**-p4)
+    xi[msp>m1] = f1*(msp[msp>m1]**-p2)
+    xi[msp>m2] = f2*(msp[msp>m2]**-p3)
+    xi[msp>m3] = f3*(msp[msp>m3]**-p4)
     xi[msp<mmin] = 0.0
     
     xi /= np.trapz(xi, msp)
@@ -176,12 +200,14 @@ def get_kroupa_imf(m1=0.08, p1=0.3, m2=0.5, p2=1.3, m3=1.0, p3=2.3, mmin=0.08):
 
 def get_imf_cdf():
     
-    msp = np.logspace(-2, 2, 1000)
+    msp = np.logspace(-2.1, 2, 10000)
     
     imf_func= get_kroupa_imf()
     
     imf = imf_func(msp)
-    cdf = np.cumsum(imf)
+
+    cdf = np.cumsum(imf*np.gradient(msp))
+    cdf -= cdf[0]
     cdf /=cdf[-1]
 
     
@@ -190,12 +216,13 @@ def get_imf_cdf():
 
 def get_imf_icdf():
     
-    msp = np.logspace(-2, 2, 1000)
+    msp = np.logspace(-2.1, 2, 10000)
     
     imf_func= get_kroupa_imf()
     
     imf = imf_func(msp)
-    cdf = np.cumsum(imf)
+    cdf = np.cumsum(imf*np.gradient(msp))
+    cdf -= cdf[0]
     cdf /=cdf[-1]
     
     return  interpolate.interp1d(cdf, msp)
@@ -208,7 +235,7 @@ def assign_masses(rstars):
     mstars = icdf(u)
     return mstars
 
-def generate_binary_population(mstars):
+def generate_binary_population(mstars, mmin=0.01):
     num_stars = len(mstars)
 
     # Arrays to store results
@@ -238,10 +265,11 @@ def generate_binary_population(mstars):
             #Eccentricity randomly distributed.. appears to be! 
             e_companions[i] = np.random.uniform()*0.9
 
-            # Determine if a binary is present based on the probability
-            binary_flags[i] = 1
-            logP_companions[i] = logP_i
-            q_companions[i] = q_i
+            # Determine if a binary is present based on the minimum mass 
+            if mstars[i]*q_i>mmin:
+                binary_flags[i] = 1
+                logP_companions[i] = logP_i
+                q_companions[i] = q_i
         
     
 
@@ -499,9 +527,10 @@ if __name__=='__main__':
         istars = np.arange(rs.shape[1]) 
         #istars = select_istars(rs, 30.0, sharpness=10.0)
 
-        nobs = 500
-        mlim =0.1
+        nobs = 400
+        mlim =0.08
         imf_cdf = get_imf_cdf()
+
         fnd = imf_cdf(mlim)
         ntot = int(nobs / (1.-fnd))
 
@@ -525,6 +554,32 @@ if __name__=='__main__':
 
         print('Total stars with binaries:', len(rs_all[0]))
         print('Binary fraction:', np.sum(bf)/float(len(ms)))
+
+        imf_func = get_kroupa_imf()
+
+
+        msp = np.logspace(-2.1, 2, 1000)
+        plt.plot(np.log10(msp), imf_cdf(msp))
+        plt.hist(np.log10(ms_all), bins=100, cumulative=True, density=True)
+        plt.show()
+
+        mbins = np.linspace(-2.0, 1.0, 11)
+        mbins_c = (mbins[1:]+mbins[:-1])/2.
+        bwidth = mbins[1]-mbins[0]
+        fig, ax = plt.subplots(figsize=(5.,4.))
+        plt.hist(np.log10(ms_all), bins=mbins, density=False,  edgecolor='k', histtype='step', linewidth=1)
+        plt.plot(np.log10(msp), len(ms_all)*bwidth*msp*imf_func(msp)/np.trapz(msp*imf_func(msp), np.log10(msp)), label='Kroupa IMF', linewidth=1)
+        #plt.plot(np.log10(msp), msp*np.gradient(imf_cdf(msp), msp))
+
+        plt.yscale('log')
+        plt.xlim([-2., 1.0])
+        plt.ylim([0.5, 300.0])
+        plt.xlabel('log. Stellar mass: $\log m_*$ [$M_\odot$]')
+        plt.ylabel('Number of stars')
+        ax.tick_params(which='both', left=True, right=True, top=True, bottom=True)
+        ax.legend()
+        plt.savefig('model_mstars.pdf', format='pdf', bbox_inches='tight')
+        plt.show()
 
         np.save('rstars_wbin.npy', rs_all)
         
@@ -553,18 +608,21 @@ if __name__=='__main__':
     rs_all[2]  =rs_all[2, irand]"""
     nbins0= 0
     nbins0 = int(np.sum(bf))
+    print('Number of binaries:', nbins0)
+    print('Number of stars:', rs_all.shape)
+
 
     sim = nbi.nbody6_cluster(rs_all.T, vs_all.T, ms_all,  outname='clustersim', dtsnap_Myr =0.0001, \
                 tend_Myr = 3.0, gasparams=None, etai=0.005, etar=0.005, etau=0.01, dtmin_Myr=1e-8, \
                 rmin_pc=1e-8,dtjacc_Myr=0.05, load=True, ctype='smooth', force_incomp = False, \
-                    rtrunc=50.0, nbin0=nbins0, aclose_au=2000.0)
+                rtrunc=50.0, nbin0=nbins0, aclose_au=2000.0)
     #sim.store_arrays(reread=True)
-    #sim.evolve(reread=False)
+    sim.evolve(reread=False)
 
     #cp.pairwise_analysis(sim, ndim=2)
     #cp.plot_dvNN_fromsim(sim, time=1.0, r0=r0, p=p, sv0=sv0)
 
-    #cp.plot_3dpos(sim)
+    cp.plot_3dpos(sim)
     #enchist = cp.encounter_analysis(sim)
     #exit()
     #cp.encounter_analysis_binaries(sim)

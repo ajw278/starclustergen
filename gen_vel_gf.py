@@ -86,7 +86,7 @@ def plot_dvNN(rs, vs, vkernel, **svparams):
     velocity_differences = np.linalg.norm(velocities - velocities[nearest_neighbors], axis=1)
 
     # Create a scatter plot
-    plt.figure(figsize=(8, 6))
+    fig, ax=  plt.subplots(figsize=(5, 4))
     
     dsp = np.logspace(-2, 1.5, 40)
     vsp = np.logspace(-2, 1.5, 30)
@@ -109,22 +109,24 @@ def plot_dvNN(rs, vs, vkernel, **svparams):
     ctf=plt.contourf(D, V, np.log10(pdist), levels=levels)
     plt.colorbar(ctf, label='Normalised MB probability: $\log [v g(v)]$')
 
-    plt.scatter(nearest_neighbor_distances, velocity_differences, c='cyan', edgecolor='gray', s=5)
+    plt.scatter(nearest_neighbor_distances, velocity_differences, c='cyan', edgecolor='gray', s=5, label='Single stars')
     # Add labels and title
 
     rsp = np.logspace(-2, 2.0)
-    plt.plot(rsp, sigv_pl(rsp, **svparams)/1e5, color='r', linewidth=2)
+    plt.plot(rsp, sigv_pl(rsp, **svparams)/1e5, color='r', linewidth=1, label='One dimensional dispersion: $\sigma_v$')
 
-    plt.plot(rsp, np.sqrt(1.-vkernel(rsp)), color='g', linewidth=2, linestyle='dotted' )
+    #plt.plot(rsp, np.sqrt(1.-vkernel(rsp)), color='g', linewidth=2, linestyle='dotted', '$1-k(\Delta r)$' )
     plt.yscale('log')
     plt.xscale('log')
-    plt.title('Magnitude of Velocity Difference to Nearest Neighbor')
-    plt.xlabel('X Position')
-    plt.ylabel('Y Position')
+    plt.xlabel('3D separation of nearest neighbour: $\Delta r$ [pc]')
+    plt.ylabel('3D velocity difference of nearest neighbour: $\Delta v$ [km s$^{-1}$]')
     plt.xscale('log')
     plt.yscale('log')
-    plt.xlim([5e-4, 20.])
-    plt.ylim([5e-2, 20.])
+    plt.xlim([1e-2, 10.])
+    plt.ylim([5e-2, 10.])
+    ax.tick_params(which='both', left=True, right=True, top=True, bottom=True)
+    ax.legend()
+    plt.savefig('vdist_3D_ICs.pdf', format='pdf', bbox_inches='tight')
     plt.show()
     
 

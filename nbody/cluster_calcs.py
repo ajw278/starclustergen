@@ -139,12 +139,10 @@ def keplerian_orbital_elements(m1, m2, dr, dv, G=1.0):
 	#Calculate specific angular momentum
 	h = np.cross(dr, dv, axis=-1)
 	hmag = np.linalg.norm(h)
-	print('h r, v', h, dr, dv)
 
 	drmag = np.linalg.norm(dr, axis=-1)
 	dvmag = np.linalg.norm(dv, axis=-1)
 
-	print('drm dvm', drmag, dvmag)
 
 	#Calculate eccentricity vector
 	e_vec = (np.cross(dv, h, axis=-1) / mu) - (dr / drmag)
@@ -179,8 +177,6 @@ def keplerian_orbital_elements(m1, m2, dr, dv, G=1.0):
 	# Calculate the mean anomaly
 	M =  E - e*np.sin(E)
 
-	print('E e sinh(E)', E, e, np.sin(E))
-
 	#Finally, get periastron itme
 	dt_peri =  - M / n
 
@@ -189,7 +185,6 @@ def keplerian_orbital_elements(m1, m2, dr, dv, G=1.0):
 def eccentric_anomaly(M, e, N=50):
     E = M + 2 * np.sum([(sp.jn(n, n * e) / n) * np.sin(n * M) for n in range(1, N + 1)])
     return E
-
 
 def keplerian_state_vector(a, e, i, Omega, arg_periapsis, m1, m2, t, tp, G=1.0):
 
@@ -258,8 +253,6 @@ def binary_state(a, e, i, Omega, arg_periapsis, m1, m2, t, tp, G=1.0):
 	dr, dv = rbb.get_binary_xv(m1, q, a, e, i, arg_periapsis, Omega, f, centre_primary=True, G=1.0)
 	return dr, dv
 
-import matplotlib.pyplot as plt
-
 def stable_binary_filter(m, cx, cv, cm, ct, G=1.0):
 	cx_alt = copy.copy(cx)
 	cv_alt = copy.copy(cv)
@@ -274,11 +267,8 @@ def stable_binary_filter(m, cx, cv, cm, ct, G=1.0):
 	for inghbr in range(0, cx_mag.shape[0]):
 		stablist = split_true_chunks(iflat[inghbr])
 
-
 		for stab in stablist:
 			if len(stab)>2:
-				print('Stab greater than 1 for neighbour', inghbr)
-				print('Stab:', stab)
 
 				ibef = stab[0]-1
 				m2 = cm[inghbr]
@@ -288,16 +278,13 @@ def stable_binary_filter(m, cx, cv, cm, ct, G=1.0):
 				t0 = ct[ibef]
 
 				# Compute Keplerian orbital elements
-				print('Params:', m, m2, cx[inghbr][ibef], cv[inghbr][ibef])
 				a, e, inclination, Omega, arg_periapsis, dt_peri = keplerian_orbital_elements(m, m2, cx[inghbr][ibef], cv[inghbr][ibef], G=G)
 				fact = 0.45/(4.5e-6)
-				print(a*fact, e, inclination, Omega, arg_periapsis)
 				if e<1:
 					state_vectors = np.array([binary_state(a, e, inclination, Omega, arg_periapsis, m, m2, t, t0+dt_peri) for t in t_arr])
 					#state_vectors = np.array([keplerian_state_vector(a, e,1e-4, 1e-4, 1e-4, m, m2, t, t0+dt_peri) for t in t_arr])
 					
 					cx_alt[inghbr][stab], cv_alt[inghbr][stab] = np.swapaxes(state_vectors,0,1)
-
 
 	return cx_alt, cv_alt, cm_alt
 
@@ -379,12 +366,7 @@ def encounter_params(cx, cv, cm, ct, mstar, G=1.0):
 			xtmp = np.zeros(len(lm))
 			etmp = np.zeros(xtmp.shape)
 			ttmp = np.zeros(xtmp.shape)
-
-			#hsmag= np.apply_along_axis(np.linalg.norm, 1, hs)
-			#mu = cm[ix]+mstar
-			#ls = hsmag*hsmag/mu
 			e, rp, dtperi = get_closeapproach(cx[ix][lm], cv[ix][lm], mstar,cm[ix],0.0)
-			print(e, rp, dtperi, ct)
 			for ienc, dt in enumerate(dts):
 				if (np.absolute(dtperi[ienc])<np.absolute(dt)):
 					ttmp[ienc] = ct[lm[ienc]]+dtperi[ienc]
