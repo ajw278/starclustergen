@@ -89,7 +89,7 @@ def binary_fraction(logP,  M1):
     else:
         return 0.0
     
-def get_q_func(gamma1=0.4, gamma2=-0.7, Ftwin=0.05):
+def get_q_func(gamma1=0.4, gamma2=-0.7, Ftwin=0.10):
     qsp = np.linspace(0.1,1., 1000)
     psp = qsp**gamma1
     psp[qsp>0.3] = (qsp[qsp>0.3]**gamma2)*(0.3**gamma1)/(0.3**gamma2)
@@ -527,7 +527,7 @@ if __name__=='__main__':
         istars = np.arange(rs.shape[1]) 
         #istars = select_istars(rs, 30.0, sharpness=10.0)
 
-        nobs = 400
+        nobs = 500
         mlim =0.08
         imf_cdf = get_imf_cdf()
 
@@ -615,15 +615,15 @@ if __name__=='__main__':
     sim = nbi.nbody6_cluster(rs_all.T, vs_all.T, ms_all,  outname='clustersim', dtsnap_Myr =0.0001, \
                 tend_Myr = 3.0, gasparams=None, etai=0.005, etar=0.005, etau=0.01, dtmin_Myr=1e-8, \
                 rmin_pc=1e-8,dtjacc_Myr=0.05, load=True, ctype='smooth', force_incomp = False, \
-                rtrunc=50.0, nbin0=nbins0, aclose_au=2000.0)
+                rtrunc=50.0, nbin0=nbins0, aclose_au=200.0)
     #sim.store_arrays(reread=True)
     sim.evolve(reread=False)
 
-    #cp.pairwise_analysis(sim, ndim=2)
-    #cp.plot_dvNN_fromsim(sim, time=1.0, r0=r0, p=p, sv0=sv0)
+    cp.pairwise_analysis(sim, ndim=2)
+    cp.plot_dvNN_fromsim(sim, time=1.0, r0=r0, p=p, sv0=sv0)
 
-    cp.plot_3dpos(sim)
-    #enchist = cp.encounter_analysis(sim)
+    #cp.plot_3dpos(sim)
+    enchist = cp.encounter_analysis(sim)
     #exit()
     #cp.encounter_analysis_binaries(sim)
     #irand = np.random.choice(np.arange(1000), size=10)

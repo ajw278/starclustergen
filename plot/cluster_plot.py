@@ -52,7 +52,7 @@ CB_color_cycle = ['#377eb8', '#ff7f00', '#4daf4a','#999999','#f781bf', '#a65628'
 def mstar_filter(rstar, vstar, mstar, mmin):
 	massb  =  mstar>mmin
 	imass = np.arange(len(mstar))[massb]
-	return copy.copy(rstar)[:, massb], copy.copy(vstar)[:, massb], copy.copy(mstar)[:, massb], imass
+	return copy.copy(rstar)[:, massb], copy.copy(vstar)[:, massb], copy.copy(mstar)[massb], imass
 
 def resample_times(times, dt):
     """
@@ -157,14 +157,15 @@ def plot_dvNN_fromsim(simulation, time=2.0, mmin=0.1, **plparams):
 	t = copy.copy(simulation.t)
 	r = copy.copy(simulation.r)
 	v = copy.copy(simulation.v)
+	m = copy.copy(simulation.m)
 	munits, runits, tunits, vunits = simulation.units_astro
 	munits_SI, runits_SI, tunits_SI = simulation.units_SI
 
-	r, v, m, istars = mstar_filter(r, v, m, mmin)
+	r, v, m, istars = mstar_filter(r*runits, v*1e-3*runits_SI/tunits_SI, m*munits, mmin)
 	
 	it = np.argmin(np.absolute(t*tunits - time))
 
-	plot_dvNN(r[it]*runits, v[it]*1e-3*runits_SI/tunits_SI, **plparams)
+	plot_dvNN(r[it], v[it], **plparams)
 	
 
 
@@ -227,6 +228,7 @@ def plot_3dpos(simulation, dim=None, save=True, rlim=30.0, dtmin=0.01):
 def pairwise_analysis(simulation, ndim=2):
 	t = copy.copy(simulation.t)
 	r = copy.copy(simulation.r)
+	m = copy.copy(simulation.m)
 	munits, runits, tunits, _ = simulation.units_astro
 
 	t *= tunits
@@ -394,8 +396,8 @@ def compare_encanalysis(simulation, istars, direct_s='enchist', direct_b='enchis
 	plt.show()
 		
 
-def encounter_analysis(simulation, plotall=True, direct='enchist',plotstars=[227,  397, 450, 481, 608, 649, 655, 736]):
-
+def encounter_analysis(simulation, plotall=True, direct='enchist',plotstars=[]):
+	#[227,  397, 450, 481, 608, 649, 655, 736]):
 	print('Copying simulation arrays (may take time if they are large...)')
 	t =  copy.copy(simulation.t)
 	r = copy.copy(simulation.r)
@@ -541,10 +543,17 @@ def compute_discevol(tseries, Rinit, Mst, Rps, eps, Mps, tps, rmin=10.0):
 def strong_enc_times(t_arr, disc_arr, drmin=0.01, split=False, enckeys=None):
 	# Identify time steps where the radius decreases
 	print(disc_arr.shape, disc_arr[:, -1].shape, t_arr.shape)
+	if not enckeys is None:
+		disc_arr = disc_arr[enckeys, :]
+
+	
 	d_arr = np.append(disc_arr, disc_arr[:, [-1]], axis=-1)
 	drrat = np.diff(d_arr, axis=1)/disc_arr
 	strenc = (drrat < -drmin)
+	
 	tgr = t_arr[np.newaxis,:]*np.ones(disc_arr.shape)
+
+
 	if not split:
 
 		# Calculate the frequency of decreasing radius at each time step
@@ -662,7 +671,7 @@ def binary_props(bf, ms, logP, q, e):
 	# Show the plot
 	plt.show()
 
-def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  tend=None, mmin=0.1):
+def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  tend=None, mmin=0.01):
 	
 	#Take stellar masses from simulation
 	m = copy.copy(simulation.m)
@@ -673,7 +682,7 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  ten
 	#Copy the positions and times from the simulation
 	r = copy.copy(simulation.r)
 	#r, v, m, istars = mstar_filter(simulation.r, simulation.v, simulation.m, mmin/munits)
-	istars = np.where(m>mmin/munits)
+	istars = np.where(m>mmin/munits)[0]
 
 	t = copy.copy(simulation.t)
 
@@ -693,15 +702,16 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  ten
 	if not os.path.isfile('disc_evol_r.npy') or not os.path.isfile('disc_evol_t.npy') or not os.path.isfile('enchist_keys.npy'):
 		enchist = encounter_analysis(simulation)
 		if os.path.isfile('enchist_keys.npy'):
-			istars = np.load('enchist_keys.npy')
+			istars = np.load('enchist_keys.npy').flatten()
 		else:
-			np.save('enchist_keys', istars)
-
+			np.save('enchist_keys', istars.flatten())
+		
 		t_arr = np.linspace(0., tend, nt)
 
 		disc_arr = np.ones((len(m), nt))
 
-		for ikey in istars:
+		
+		for ikey in range(len(m)):
 			x_order, m_order, e_order, t_order = enchist[ikey]
 
 			
@@ -722,21 +732,19 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  ten
 	else:
 		disc_arr = np.load('disc_evol_r.npy')
 		t_arr = np.load('disc_evol_t.npy')
-		istars = np.load('enchist_keys.npy')
+		istars = np.load('enchist_keys.npy').flatten()
 	
-
-
 
 	drmin = 0.01
 	tfilt = 0.01
 	#Find the times and change in disc radius for weak encounters 
-	tencs, drencs = strong_enc_times(t_arr, disc_arr, drmin=drmin, split=False)
+	tencs, drencs = strong_enc_times(t_arr, disc_arr, drmin=drmin, split=False, enckeys=istars)
 
 	#Find the times and change in disc radius for strong encounters, split into indvidual stars
 	tencs_splt, drence_splt, istar_splt = strong_enc_times(t_arr, disc_arr, drmin=drmin, split=True, enckeys=istars)
 
 	#Find the times and change in disc radius for strong encounters (not split up)
-	tencs_str, drencs_str = strong_enc_times(t_arr, disc_arr, drmin=0.1, split=False)
+	tencs_str, drencs_str = strong_enc_times(t_arr, disc_arr, drmin=0.1, split=False, enckeys=istars)
 
 	#Only include encounters for stars older than lower time limit
 	ifenc = tencs > tfilt
