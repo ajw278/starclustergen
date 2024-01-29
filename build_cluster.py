@@ -183,7 +183,7 @@ exit()"""
 
 def get_kroupa_imf(m1=0.08, p1=0.3, m2=0.5, p2=1.3, m3=1.0, p3=2.3, p4=2.7,  mmin=0.01):
     
-    msp = np.logspace(-2.1, 2., 10000)
+    msp = np.logspace(-3.0, 2., 10000)
     
     xi  = msp**-p1
     f1 = (m1**-p1)/(m1**-p2)
@@ -200,7 +200,7 @@ def get_kroupa_imf(m1=0.08, p1=0.3, m2=0.5, p2=1.3, m3=1.0, p3=2.3, p4=2.7,  mmi
 
 def get_imf_cdf():
     
-    msp = np.logspace(-2.1, 2, 10000)
+    msp = np.logspace(-3.0, 2, 10000)
     
     imf_func= get_kroupa_imf()
     
@@ -216,7 +216,7 @@ def get_imf_cdf():
 
 def get_imf_icdf():
     
-    msp = np.logspace(-2.1, 2, 10000)
+    msp = np.logspace(-3.0, 2, 10000)
     
     imf_func= get_kroupa_imf()
     
@@ -559,10 +559,6 @@ if __name__=='__main__':
 
 
         msp = np.logspace(-2.1, 2, 1000)
-        plt.plot(np.log10(msp), imf_cdf(msp))
-        plt.hist(np.log10(ms_all), bins=100, cumulative=True, density=True)
-        plt.show()
-
         mbins = np.linspace(-2.0, 1.0, 11)
         mbins_c = (mbins[1:]+mbins[:-1])/2.
         bwidth = mbins[1]-mbins[0]
@@ -578,8 +574,8 @@ if __name__=='__main__':
         plt.ylabel('Number of stars')
         ax.tick_params(which='both', left=True, right=True, top=True, bottom=True)
         ax.legend()
-        plt.savefig('model_mstars.pdf', format='pdf', bbox_inches='tight')
         plt.show()
+        exit()
 
         np.save('rstars_wbin.npy', rs_all)
         
@@ -611,6 +607,61 @@ if __name__=='__main__':
     print('Number of binaries:', nbins0)
     print('Number of stars:', rs_all.shape)
 
+    """ms_single = np.append(ms_all[:2*nbins0:2], ms_all[2*nbins0:])
+
+
+    M1_values = np.logspace(-2, 1.5, 100)
+    logP_values = np.linspace(minlogP, maxlogP, 400)
+
+    M1_mesh, logP_mesh = np.meshgrid(M1_values, logP_values)
+
+    binary_fraction_values = np.vectorize(binary_fraction)(logP_mesh, M1_mesh)
+
+    # Plotting
+    fig, ax = plt.subplots(figsize=(5, 4))
+    pcol = plt.pcolormesh(M1_mesh, logP_mesh, np.log10(binary_fraction_values), cmap='bone', shading='auto')
+    #plt.pcolormesh(M1_mesh, logP_mesh, binary_fraction_values, cmap='hot', shading='auto', vmin=0.0, vmax=0.1)
+
+    plt.xlabel('Primary mass: $m_{*,1}$ [$M_\odot$]')
+    plt.ylabel('log. Period: $\log P$ [days]')
+
+    plt.scatter(ms_single[bf==1], logP[bf==1], s=1, color='r')
+
+    cbar = plt.colorbar(pcol, label='log. Binary frac. per period dex.: $\log \mathrm{d}f_\mathrm{bin}/\mathrm{d}\log P$')
+    ax.tick_params(which='both', right=True, left=True, top=True, bottom=True)
+    # Show the plot
+    plt.xscale('log')
+    plt.ylim([minlogP, maxlogP])
+    plt.savefig('binary_dist.png', bbox_inches='tight', format='png')
+    plt.show()
+    exit()
+
+    msp = np.logspace(-2.3, 2, 1000)
+    mbins = np.linspace(-2.3, 1.6, 14)
+    mbins_c = (mbins[1:]+mbins[:-1])/2.
+    bwidth = mbins[1]-mbins[0]
+    imf_func = get_kroupa_imf()
+
+
+
+    fig, ax = plt.subplots(figsize=(5.,4.))
+    plt.hist(np.log10(ms_all), bins=mbins, density=False,  edgecolor='k', histtype='step', linewidth=1, label='All stars')
+    plt.hist(np.log10(ms_single), bins=mbins, density=False,  edgecolor='r', histtype='step', linewidth=1, label='Primaries and singles')
+    #plt.plot(np.log10(msp), msp*np.gradient(imf_cdf(msp), msp))
+    plt.plot(np.log10(msp), len(ms_all)*bwidth*msp*imf_func(msp)/np.trapz(msp*imf_func(msp), np.log10(msp)),c='k', linestyle='dashed', label='Kroupa IMF', linewidth=1)
+
+
+    plt.yscale('log')
+    plt.xlim([-2.3, 1.6])
+    plt.ylim([0.5, 300.0])
+    plt.xlabel('log. Stellar mass: $\log m_*$ [$M_\odot$]')
+    plt.ylabel('Number of stars')
+    ax.tick_params(which='both', left=True, right=True, top=True, bottom=True)
+    ax.legend()
+    plt.savefig('model_mstars.pdf', format='pdf', bbox_inches='tight')
+    plt.show()
+
+    exit() """
 
     sim = nbi.nbody6_cluster(rs_all.T, vs_all.T, ms_all,  outname='clustersim', dtsnap_Myr =0.0001, \
                 tend_Myr = 3.0, gasparams=None, etai=0.005, etar=0.005, etau=0.01, dtmin_Myr=1e-8, \
@@ -619,11 +670,11 @@ if __name__=='__main__':
     #sim.store_arrays(reread=True)
     sim.evolve(reread=False)
 
-    cp.pairwise_analysis(sim, ndim=2)
-    cp.plot_dvNN_fromsim(sim, time=1.0, r0=r0, p=p, sv0=sv0)
-
+    #cp.pairwise_analysis(sim, ndim=2)
+    #cp.plot_dvNN_fromsim(sim, time=1.0, r0=r0, p=p, sv0=sv0)
+    #exit()
     #cp.plot_3dpos(sim)
-    enchist = cp.encounter_analysis(sim)
+    #enchist = cp.encounter_analysis(sim)
     #exit()
     #cp.encounter_analysis_binaries(sim)
     #irand = np.random.choice(np.arange(1000), size=10)

@@ -32,12 +32,27 @@ def adjust_com(rvstars, mstars):
 
 def stellar_potential(rstars, mstars):
 	
-    gpot_tot = 0.0
-    dr = spatial.distance.cdist(rstars, rstars)
-    dr[np.diag_indices(len(dr), ndim=2)] = np.inf
-    gpot = mstars[np.newaxis,:]*mstars[:, np.newaxis]/dr
+	if len (mstars)<7e3:
+		gpot_tot = 0.0
+		dr = spatial.distance.cdist(rstars, rstars)
+		dr[np.diag_indices(len(dr), ndim=2)] = np.inf
+		gpot = mstars[np.newaxis,:]*mstars[:, np.newaxis]/dr
 
-    return np.sum(np.triu(gpot,k=1))
+		return np.sum(np.triu(gpot,k=1))
+	else:
+		rmag = np.linalg.norm(rstars, axis=-1)
+		isort = np.argsort(rmag)
+		msort = mstars[isort]
+		rsort = rmag[isort]
+
+		Menc = np.cumsum(msort)
+		dpdr = Menc/rsort/rsort
+		dpcs = np.cumsum(dpdr[::-1]*np.gradient(rsort[::-1]))  
+		return 0.5*np.sum(msort*dpcs[::-1])
+
+def gas_potential(rstars, mstars, Mgas, agas):
+	rmag=np.linalg.norm(rstars, axis=-1)
+	return np.sum(-1 * Mgas*mstars/ np.sqrt(rmag**2 + agas**2))
 
 def total_kinetic(vstars, mstars):
     vsq = np.linalg.norm(vstars, axis=1)**2
@@ -327,8 +342,6 @@ def get_closeapproach(dr, dv, m1, m2, T, add=1, G=1.0):
 
 	# Calculate the mean anomaly
 	M =  E - e*np.sin(E)
-
-	print(E, e, np.sinh(E))
 
 	#Finally, get periastron itme
 	T_peri = T - np.sign(add)*M / n

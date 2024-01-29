@@ -17,9 +17,6 @@ import scipy.interpolate as interpolate
 import cluster_calcs as cc
 
 
-
-
-
 def get_nbody_units(ms_Msol, rs_pc, vs_kms):
 
 	#Convert everything to SI
@@ -39,8 +36,9 @@ def get_nbody_units(ms_Msol, rs_pc, vs_kms):
 	#v_units = np.sqrt((4./m_units)*(KE - np.absolute(pot)))
 	#r_units = G_si*m_units/v_units 
 
+	rsmag = np.linalg.norm(rs, axis=-1 )
 
-	potG1 = -3.*np.pi*np.sum(ms)**2 / (np.median(rs)*1.3) /32.0
+	potG1 = -3.*np.pi*np.sum(ms)**2 / (np.median(np.absolute(rsmag))*1.3) /32.0
 	pot = potG1*G_si
 	
 	r_units = G_si*np.sum(ms)**2 / np.absolute(pot)

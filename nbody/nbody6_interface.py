@@ -262,13 +262,15 @@ class nbody6_cluster:
 		self.dtopt = self.dt
 		self.dtadj = self.dt
 
-		if hasattr(self, 'tends') and hasattr(self, 'idir'):
+		"""if hasattr(self, 'tends') and hasattr(self, 'idir'):
 			if len(self.tends)>1:
 				iatt = 1
 				tfrac = float(self.tends[self.idir]/self.dt)
 				
 				while np.absolute(int(tfrac)-tfrac)/tfrac >self.dtjacc:
-					self.dt/=10.0
+					print('Reducing snapshot...')
+					print(tfrac, self.dt, self.dtjacc )
+					self.dtjacc/=10.0
 					
 					tfrac = float(self.tends[self.idir]/self.dt)
 					iatt+=1
@@ -277,7 +279,7 @@ class nbody6_cluster:
 					if iatt>20:
 						print('Error: check gas jump times ({0})'.format(self.tends[self.idir]))
 						print('dt_err/dt_acc: ', np.absolute(int(tfrac)-tfrac)/(tfrac*self.dtjacc))
-						sys.exit()
+						sys.exit()"""
 		
 		print('Snapshot timestep: {0}'.format(self.dt))
 		
@@ -519,7 +521,7 @@ class nbody6_cluster:
 		indict['RMIN'] = self.rmin
 		#Reg tstep param (2*pi/ETAU steps/orbit)
 		indict['ETAU'] =  self.etau
-		#binding energy per unit mass fror hard binary
+		#binding energy per unit mass for hard binary
 		indict['ECLOSE'] = self.eclose
 		#Gmin relative two-body pert for unperturbed motion
 		indict['GMIN'] = 1e-8
@@ -546,11 +548,14 @@ class nbody6_cluster:
 		#Plotting interval for stellar evolution HRDIAG (N-body units; >= DELTAT)
 		indict['DTPLOT'] = 1.0
 		
+
 		if type(self.gasparams[self.idir])!=type(None) and indict['KZ'][21]!=10:
+			print('Adding gas potential...')
 			stell_pot = cc.stellar_potential(self.rs[stinds], self.ms[stinds])
 			gas_pot = cc.gas_potential(self.rs[stinds], self.ms[stinds], self.gasparams[self.idir][0], self.gasparams[self.idir][1])
 			gpot = np.absolute(stell_pot)+np.absolute(gas_pot)
 		else:
+			print('Computing stellar potential...')
 			gpot = np.absolute(cc.stellar_potential(self.rs[stinds], self.ms[stinds]))
         
 		ke = cc.total_kinetic(self.vs[stinds],  self.ms[stinds])
@@ -565,7 +570,7 @@ class nbody6_cluster:
 			print('Error: virial ratio too large.')
 			print('Q: {0}, GPOT: {1}, TKIN: {2}'.format(Qvir, gpot, ke))
 			sys.exit()
-
+		
 		indict['Q'] =  Qvir
 
 		if not restart is None and indict['KSTART']>2:
@@ -623,7 +628,7 @@ class nbody6_cluster:
 	def read_to_npy(self, full=False, force=False, checkQ=False, checkT=True, checkScale=False):
 	
 		nmax = int(self.tend)+2
-		print('Searching for nmax = %d snapshots', nmax)
+		print('Searching for nmax = %d snapshots'%nmax)
 
 		tunits_ast, munits_ast, runits_ast, vunits_ast = self.units_astro
 
@@ -638,6 +643,7 @@ class nbody6_cluster:
 
 		if not os.path.isfile(self.out+'_t.npy') or not os.path.isfile(self.out+'_r.npy') or not os.path.isfile(self.out+'_v.npy') or force:
 			read=True
+			print('READING...')
 			def read_header(file):
 				newline = file.read(4)
 				header1 = np.fromfile(file, dtype=np.int32, count=4)
@@ -648,10 +654,10 @@ class nbody6_cluster:
 
 
 			files_all = []
-			conf_list = []
-			subconf_list = []
 			for iconf in range(nmax):
 				files_tmp = glob.glob('conf.3_'+str(iconf)+'.*')
+				print(os.getcwd())
+				print(files_tmp)
 				
 				if len(files_tmp)>0:
 					fle_nums = np.zeros(len(files_tmp))
@@ -659,11 +665,7 @@ class nbody6_cluster:
 						fle_nums[ifle] = float(files_tmp[ifle].split('.')[-1])
 
 					ifile_srt = np.argsort(fle_nums)
-						
-						#conf_list.append(iconf)
-						#subconf_list.append([])
 					for ifile in ifile_srt:
-						#subconf_list.append(int(fname.split('.')[-1]))
 						files_all.append(files_tmp[ifile])
 
 			print('All files:', files_all)
@@ -933,10 +935,16 @@ class nbody6_cluster:
 
 	
 	def store_arrays(self, reread=False):
+		print('Store arrays called...')
 		if not self.complete or reread:
 			for idir in range(len(self.dirs)):
-				d = self.dirs[idir]
-				if os.path.isdir(d):
+				d = self.dirs[idir]			
+				if os.path.isdir(d):	
+					if reread:
+						homedir = os.getcwd()
+						os.chdir(d)
+						self.read_to_npy(force=reread, checkT=False)
+						os.chdir(homedir)
 					if idir==0:
 						t = np.load(d+'/'+self.out+'_t.npy')
 						r = np.load(d+'/'+self.out+'_r.npy')
@@ -967,6 +975,7 @@ class nbody6_cluster:
 
 	
 	def run_nbody(self, reread=False, suppress_restart=True):
+		print('Call run Nbody...')
 		homedir = os.getcwd()
 
 		if not self.complete or reread:
@@ -1043,6 +1052,7 @@ class nbody6_cluster:
 		return None
 
 	def evolve(self, reread=True, suppress_restart=True):
+		print('Complete:', self.complete)
 		if not self.complete:
 			self.run_nbody(reread=reread, suppress_restart=suppress_restart)
 		

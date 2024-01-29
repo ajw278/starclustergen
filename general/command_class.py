@@ -15,7 +15,8 @@ class Command(object):
 	def run(self, timeout):
 		def target():
 			print('Thread started: {0}'.format(self.cmd))
-			self.process = subprocess.Popen("ulimit -s unlimited; exec " +self.cmd, shell=True)
+			#ulimit -s unlimited; 
+			self.process = subprocess.Popen("exec " +self.cmd, shell=True)
 			self.process.communicate()
 			print('Thread finished')
 

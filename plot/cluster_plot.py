@@ -8,6 +8,7 @@ from matplotlib.ticker import AutoMinorLocator
 
 
 from matplotlib import cm
+from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 from matplotlib.colors import LogNorm
 
@@ -22,6 +23,8 @@ from scipy.spatial.distance import cdist
 import copy
 from scipy.special import gamma
 import binary_reader as bread
+import scipy.interpolate as interpolate
+import scipy.stats as ss
 
 plt.rc('text', usetex=True)
 plt.rc('text.latex', preamble='\\usepackage{color}')
@@ -46,7 +49,7 @@ MDLIM=2.5e-10
 mpl_cols = ['k','b','g','r','orange', 'c', 'm', 'y']
 CB_color_cycle = ['#377eb8', '#ff7f00', '#4daf4a','#f781bf', '#a65628', '#984ea3','#999999', '#e41a1c', '#dede00']
 
-CB_color_cycle = ['#377eb8', '#ff7f00', '#4daf4a','#999999','#f781bf', '#a65628', '#e41a1c','#984ea3', '#e41a1c', '#dede00']
+CB_color_cycle = ['#377eb8', '#ff7f00', '#4daf4a','#999999','#f781bf', '#a65628', '#e41a1c','#984ea3', '#dede00', 'cyan', 'teal']
 
 
 def mstar_filter(rstar, vstar, mstar, mmin):
@@ -311,7 +314,7 @@ def encounter_analysis_binaries(simulation, direct='enchist_bins'):
 	munit, runit, tunit, vunit = simulation.units_astro
 	munit_phys, runit_phys, tunit_phys = simulation.units_SI
 	G = 6.67e-11*(tunit_phys**2)*munit_phys/(runit_phys**3)
-	print('GRavitational constant:', G)
+	print('Gravitational constant:', G)
 
 
 
@@ -343,7 +346,7 @@ def encounter_analysis_binaries(simulation, direct='enchist_bins'):
 			t = t.flatten()
 			if np.sum(bf)>0:
 				dt = np.diff(t, prepend=0.0)
-				period = np.sqrt(4.*np.pi*np.pi*(a*au2pc/runit)**3/(G*(m[istar]+m2/munit)))
+				period = 2.*np.pi*np.sqrt((a*au2pc/runit)**3/(G*(m[istar]+m2/munit)))
 				prob_enc = dt/period
 				print('Prob_encs completed')
 				prob_enc[np.isnan(prob_enc)] = 0.0
@@ -396,7 +399,9 @@ def compare_encanalysis(simulation, istars, direct_s='enchist', direct_b='enchis
 	plt.show()
 		
 
-def encounter_analysis(simulation, plotall=True, direct='enchist',plotstars=[]):
+def encounter_analysis(simulation, plotall=True, direct='enchist', plotstars=[]): # plotstars=[173, 283, 569, 631, 844, 1019]):#[140, 270, 283, 296, 370, 456, 509, 631, 713, 1000, 1019]):
+	#plotstars=[140, 296, 509, 631, 713]
+	#,plotstars=[34, 84, 140, 270, 283, 738, 1000, 1019]
 	#[227,  397, 450, 481, 608, 649, 655, 736]):
 	print('Copying simulation arrays (may take time if they are large...)')
 	t =  copy.copy(simulation.t)
@@ -516,13 +521,22 @@ def Rtrunc(Rperi, Mstar, Rdisc, epert, Mpert):
 
 	epert = max(epert,1.0)
 
-	f =(Mpert/Mstar)**(1./3.)
+	f =(Mpert/Mstar)**(-1./3.)
 	Rx = Rdisc/Rperi
 	Rxinter = (1.-psi1*epert**-psi2)*Rx+f*psi1*psi3*epert**-psi2
 	Rxclose = phi1*epert**(f*phi2)*f*(Mpert/Mstar)**phi3
 	Rnew = Rperi*min(min(Rx, Rxinter), Rxclose)
 
 	return Rnew
+
+"""Ro = 90.0
+Rp = 100.0
+e = 1.0
+m1 = 1.0
+m2 = 0.1
+
+print((Rtrunc(Rp, m1, Ro, e, m2)-Ro)/Ro)
+exit()"""
 
 def compute_discevol(tseries, Rinit, Mst, Rps, eps, Mps, tps, rmin=10.0):
 
@@ -671,7 +685,40 @@ def binary_props(bf, ms, logP, q, e):
 	# Show the plot
 	plt.show()
 
-def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  tend=None, mmin=0.01):
+def get_kroupa_imf(m1=0.08, p1=0.3, m2=0.5, p2=1.3, m3=1.0, p3=2.3, p4=2.7,  mmin=0.01):
+    
+    msp = np.logspace(-3.0, 2., 10000)
+    
+    xi  = msp**-p1
+    f1 = (m1**-p1)/(m1**-p2)
+    f2 = f1*(m2**-p2)/(m2**-p3)
+    f3 = f2*(m3**-p3)/(m3**-p4)
+    xi[msp>m1] = f1*(msp[msp>m1]**-p2)
+    xi[msp>m2] = f2*(msp[msp>m2]**-p3)
+    xi[msp>m3] = f3*(msp[msp>m3]**-p4)
+    xi[msp<mmin] = 0.0
+    
+    xi /= np.trapz(xi, msp)
+
+    return interpolate.interp1d(msp, xi)
+
+def get_imf_cdf(mmin=0.01):
+    
+    msp = np.logspace(-3.0, 2, 10000)
+    
+    imf_func= get_kroupa_imf(mmin=mmin)
+    
+    imf = imf_func(msp)
+
+    cdf = np.cumsum(imf*np.gradient(msp))
+    cdf -= cdf[0]
+    cdf /=cdf[-1]
+
+    
+    return interpolate.interp1d(msp, cdf)
+
+
+def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  tend=None, mmin=0.08):
 	
 	#Take stellar masses from simulation
 	m = copy.copy(simulation.m)
@@ -682,13 +729,36 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  ten
 	#Copy the positions and times from the simulation
 	r = copy.copy(simulation.r)
 	#r, v, m, istars = mstar_filter(simulation.r, simulation.v, simulation.m, mmin/munits)
-	istars = np.where(m>mmin/munits)[0]
 
 	t = copy.copy(simulation.t)
 
 	#Convert to parsecs and Myr
 	r *= runits
 	t *= tunits
+	m *= munits
+
+	istars = np.where(m>mmin)[0]
+
+	def rm_rel_det(m_):
+		return 2.5*100.*m_**0.9
+	mstarrel=False
+	if rinit==100.:
+		nonfid =''
+	elif rinit=='mstar':
+		nonfid = '_mRrel'
+		mstarrel=True
+		def rm_rel(m_):
+			return rm_rel_det(m_)
+	elif rinit=='mstar_scat':
+
+		nonfid = '_mRrel_scat'
+		mstarrel=True
+		def rm_rel(m_):
+			fact = np.random.normal()
+			return(10**fact)*rm_rel_det(m_)
+
+	else:
+		nonfid = '_'+str(rinit)
 
 	#Select the positional snapshot to plot at the end
 	itplot = np.argmin(np.absolute(t-tplot))
@@ -699,7 +769,7 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  ten
 		tend = t[-1]*tunits
 
 	#Perform the analysis of where encounter occur, and their influence on the protoplanetary discs
-	if not os.path.isfile('disc_evol_r.npy') or not os.path.isfile('disc_evol_t.npy') or not os.path.isfile('enchist_keys.npy'):
+	if not os.path.isfile('disc_evol_r'+nonfid+'.npy') or not os.path.isfile('disc_evol_t'+nonfid+'.npy') or not os.path.isfile('enchist_keys.npy'):
 		enchist = encounter_analysis(simulation)
 		if os.path.isfile('enchist_keys.npy'):
 			istars = np.load('enchist_keys.npy').flatten()
@@ -707,31 +777,29 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  ten
 			np.save('enchist_keys', istars.flatten())
 		
 		t_arr = np.linspace(0., tend, nt)
-
 		disc_arr = np.ones((len(m), nt))
 
-		
 		for ikey in range(len(m)):
 			x_order, m_order, e_order, t_order = enchist[ikey]
-
-			
 
 			#x_order= np.append(x_order, logsx[inghbr]*runits/au2pc) 
 			#e_order= np.append(e_order, logse[inghbr]) 
 			#t_order = np.append(t_order, logst[inghbr]*tunits) 
 			#m_order = np.append(m_order, np.ones(len(logsx[inghbr]))*cm[inghbr]*munits)
-			disc_arr[ikey] = compute_discevol(t_arr, rinit, m[ikey]*munits, x_order, e_order, m_order, t_order)
+			if mstarrel:
+					rinit = rm_rel(m[ikey])
+			disc_arr[ikey] = compute_discevol(t_arr, rinit, m[ikey], x_order, e_order, m_order, t_order)
 			#print(m[ikey]*munits, m_order,  x_order, t_order)
 
 			#plt.plot(t_arr, disc_arr[ikey])
 			#plt.savefig('rdisc_evol_%d.pdf'%ikey, bbox_inches='tight', format='pdf')
 			#plt.show()
-		np.save('disc_evol_r', disc_arr)
-		np.save('disc_evol_t', t_arr)
+		np.save('disc_evol_r'+nonfid, disc_arr)
+		np.save('disc_evol_t'+nonfid, t_arr)
 
 	else:
-		disc_arr = np.load('disc_evol_r.npy')
-		t_arr = np.load('disc_evol_t.npy')
+		disc_arr = np.load('disc_evol_r'+nonfid+'.npy')
+		t_arr = np.load('disc_evol_t'+nonfid+'.npy')
 		istars = np.load('enchist_keys.npy').flatten()
 	
 
@@ -741,7 +809,9 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  ten
 	tencs, drencs = strong_enc_times(t_arr, disc_arr, drmin=drmin, split=False, enckeys=istars)
 
 	#Find the times and change in disc radius for strong encounters, split into indvidual stars
-	tencs_splt, drence_splt, istar_splt = strong_enc_times(t_arr, disc_arr, drmin=drmin, split=True, enckeys=istars)
+	tencs_splt, drence_splt, istar_splt = strong_enc_times(t_arr, disc_arr, drmin=0.01, split=True, enckeys=istars)
+	
+	tencs_splt_str, drence_splt_str, istar_splt_str = strong_enc_times(t_arr, disc_arr, drmin=0.1, split=True, enckeys=istars)
 
 	#Find the times and change in disc radius for strong encounters (not split up)
 	tencs_str, drencs_str = strong_enc_times(t_arr, disc_arr, drmin=0.1, split=False, enckeys=istars)
@@ -759,7 +829,7 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  ten
 	#bins_dr = 10.**bins_ldr
 	
 	hist, xedges, yedges = np.histogram2d(np.log10(tencs), np.log10(-drencs), bins=(bins_lt, bins_ldr))
-	hist /= 2.*np.diff(bins_t)[:, np.newaxis]
+	hist /= np.diff(bins_t)[:, np.newaxis]
 	hist = np.log10(hist)
 	print(hist, xedges, yedges)
 
@@ -775,7 +845,7 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  ten
 	#ax1.hist(tencs, bins=bins_t, histtype='step', alpha=0.7, edgecolor='black', density=False)
 	hist_values, bin_edges = np.histogram(np.log10(tencs), bins=bins_lt)
 	hist_values = np.asarray(hist_values, dtype=float)
-	hist_values /= np.diff(bins_t)*2.
+	hist_values /= np.diff(bins_t)
 
 	print(bin_edges[:-1], hist_values)
 	# Manually plot the histogram using matplotlib
@@ -784,7 +854,7 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  ten
 
 	hist_values, bin_edges = np.histogram(np.log10(tencs_str), bins=bins_lt)
 	hist_values = np.asarray(hist_values, dtype=float)
-	hist_values /= np.diff(bins_t)*2.
+	hist_values /= np.diff(bins_t)
 
 	# Manually plot the histogram using matplotlib
 	ax1.bar(bin_edges[:-1], hist_values, width=np.diff(bin_edges), edgecolor='red', facecolor='None', align='edge', label='$-\Delta R_\mathrm{out}/R_\mathrm{out} >0.1$')
@@ -820,7 +890,7 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  ten
 	plt.setp(ax1.get_xticklabels(), visible=False)
 
 	ax1.set_yscale('log')
-	ax1.set_ylim([3., 3e4])
+	ax1.set_ylim([3., 5e4])
 	ax2.set_xlim([-2., np.log10(3.0)])
 	ax2.set_ylim([-2., 0.0])
 
@@ -837,7 +907,7 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  ten
 	#  panels
 	plt.subplots_adjust(wspace=0, hspace=0)
 
-	plt.savefig('encounter_summary.pdf', format='pdf', bbox_inches='tight')
+	plt.savefig('encounter_summary'+nonfid+'.pdf', format='pdf', bbox_inches='tight')
 	# Show the plot
 	plt.show()
 
@@ -845,28 +915,114 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  ten
 	#tencs_splt, drence_splt, istar_splt
 
 	ikeyplot = []
+	print(istar_splt)
+	print(m[istar_splt])
 	for iist, ist in enumerate(istar_splt):
 		if np.any(np.absolute(tencs_splt[iist]-tplot)<dtplot):
 			ikeyplot.append(ist)
+	
+	ikeyplot_str = []
+	for iist, ist in enumerate(istar_splt_str):
+		if np.any(np.absolute(tencs_splt_str[iist]-tplot)<dtplot):
+			ikeyplot_str.append(ist)
+	
+
 
 	ikeyplot= np.array(ikeyplot, dtype='int')
 	# Plotting the locations of all stars at time tplot
 	fig, ax = plt.subplots(figsize=(8, 6))
-	plt.scatter(r[istars, 0], r[istars, 1], color='k', s=4)
+	plt.scatter(r[istars, 0], r[istars, 1], color='k', s=4, label='$m_*>%.2lf \, M_\odot$'%mmin)
 
 	# Highlighting the locations of stars with strong encounters
 	ienc=0
+	marker = '*'
 	for ikey in ikeyplot:
-		plt.scatter(r[ikey, 0], r[ikey, 1], label=f'Star {ikey}', color=CB_color_cycle[ienc],  marker='*', s=100)
+		if ienc>=len(CB_color_cycle):
+			marker='^'
+		if ienc>=len(CB_color_cycle):
+			marker='s'
+		plt.scatter(r[ikey, 0], r[ikey, 1], label=f'\#%d: $m_* = %.2lf \, M_\odot$'%(ikey, m[ikey]),facecolor='None', edgecolor=CB_color_cycle[ienc%len(CB_color_cycle)],  marker=marker, s=60)
 		ienc+=1
+	
+	plt.scatter(r[ikeyplot_str, 0], r[ikeyplot_str, 1], color='None', edgecolor='r',  marker='o', s=150, label='$-\Delta R_\mathrm{out}/R_\mathrm{out} >0.1$')
+	
+
 	plt.xlabel('$x$ Position [pc]')
 	plt.ylabel('$y$ Position [pc]')
-	plt.legend(ncol=2)
+	plt.legend(ncol=2, fontsize=7)
 	#plt.grid(True)
 	ax.tick_params(which='both', top=True, right=True,left=True, bottom=True)
 	
-	plt.savefig('spatial_encounters.pdf', format='pdf', bbox_inches='tight')
+	plt.savefig('spatial_encounters'+nonfid+'.pdf', format='pdf', bbox_inches='tight')
 	plt.show()
+
+
+	ikey_ms = []
+	for iist, ist in enumerate(istar_splt):
+		if np.any(tencs_splt[iist]>tplot):
+			ikey_ms.append(ist)
+
+	mencs = m[ikey_ms]
+	mall = m[m>mmin]
+	# Calculate the CDF for mencs
+	mencs_cdf = np.cumsum(np.ones(len(mencs))) / float(len(mencs))
+	mall_cdf = np.cumsum(np.ones(len(mall))) / float(len(mall))
+
+	# Plotting
+	fig, ax = plt.subplots(figsize=(5, 4))
+
+	# Plot imf_cdf as a step function
+	plt.step(np.sort(mall), mall_cdf, color='k', linewidth=1, label='All stars $m_*>0.08 \, M_\odot$')
+	plt.step(np.sort(mencs), mencs_cdf, color='r', linewidth=1, label='$-\Delta R_\mathrm{out}/R_\mathrm{out}>0.01$, 1-3 Myr')
+
+
+
+	# Add a shaded region between 1.0 and 1.42 on the x-axis
+	#ax.axvspan(1.0, 1.42, color='orange', alpha=0.2)
+	plt.axvline(1.42, linestyle='dashed', color='orange', linewidth=1)
+
+	# Add text label for the shaded region
+	ax.text(1.5, 0.2, 'RW Aurigae A', color='orange', rotation=90, verticalalignment='center')
+
+	# Add a shaded region between 1.0 and 1.42 on the x-axis
+	#ax.axvspan(0.9, 1.7, color='purple', alpha=0.2)
+	plt.axvline(1.3, linestyle='dashed', color='purple', linewidth=1)
+
+	# Add text label for the shaded region
+	ax.text(1.15, 0.2, 'UX Tau A', color='purple', rotation=90, verticalalignment='center')
+
+	
+	plt.axvline(0.75, linestyle='dashed', color='brown', linewidth=1)
+
+	# Add text label for the shaded region
+	ax.text(0.8, 0.2, 'HV Tau C', color='brown', rotation=90, verticalalignment='center')
+
+	
+	plt.axvline(0.5, linestyle='dashed', color='gray', linewidth=1)
+
+	# Add text label for the shaded region
+	ax.text(0.44, 0.2, 'DO Tau', color='gray', rotation=90, verticalalignment='center')
+
+	# Perform KS test
+	ks_statistic, ks_p_value = ss.kstest(mencs, mall)
+	print(f"KS Statistic: {ks_statistic}")
+	print(f"P-value: {ks_p_value}")
+
+	plt.xscale('log')
+	plt.xlim([mmin, 3.0])
+	plt.ylim([0.0, 1.0])
+	# Add labels and title
+	plt.xlabel('Mass: $m$ [$M_\odot$]')
+	plt.ylabel('Fraction of stars with mass $m_* <m$')
+	plt.legend(loc='center right')
+
+	# Show ticks on all sides
+	plt.tick_params(axis='both', which='both', direction='in', top=True, right=True)
+
+	plt.savefig('mstar_encs.pdf', bbox_inches='tight', format='pdf')
+	# Display the plot
+	plt.show()
+
 
 
 	
@@ -879,46 +1035,69 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  ten
 	subset_indices = np.searchsorted(t_arr, subset_times)
 
 	subset_indices[-1]  = -1
+	subset_indices[0] = 0
 
-	# Create a figure and axis
-	fig, ax = plt.subplots()
+
 
 	# Normalize the time values for color mapping
 	norm = Normalize(vmin=0.0, vmax=3.0)
 	color_map = cm.viridis(norm(t_arr[subset_indices]))
 
-	bins = np.linspace(0., 100., 11)
 
-	# Iterate over each time step in the subset and plot a separate histogram
+	# Initialize a cumulative sum array
+
+
+	# Create a new figure and axis
+	fig, ax = plt.subplots()
+
+
+	if mstarrel:
+		rmax = rm_rel_det(3.0)
+		bins = np.linspace(0., rmax, int(rmax+1))
+		plt.hist(rm_rel(m[istars]), bins=bins, histtype='step', cumulative=True, linewidth=1, color='r', label='$R_{\mathrm{out},0}$')
+	else:
+		rmax = rinit
+		bins = np.linspace(0., rmax, int(rmax+1))
+
+	# Iterate over each time step in the subset and plot a separate cumulative distribution
 	ict = 0
 	for i in subset_indices:
+		# Calculate the cumulative distribution
+		n, _, _ = plt.hist(disc_arr[istars, i], bins=bins, histtype='step', edgecolor=color_map[ict], linewidth=1.0, cumulative=True)
 		
-		# Plot histogram with colored edges
-		n, bins, patches = plt.hist(disc_arr[:, i], bins=bins, histtype='step', edgecolor=color_map[ict], linewidth=1.5)
-		ict+=1
+		ict += 1
+
+	
+
+
 
 	# Add a colorbar with logarithmic spacing
 	cbar = plt.colorbar(cm.ScalarMappable(norm=norm, cmap=cm.viridis), ax=ax, ticks=subset_times)
 	cbar.set_label('Time: $t$ [Myr]')
-	# Set ticks on all axes
-	ax.tick_params(top=True, right=True, direction='in')
 
-	plt.xlabel('Disc outer radius: $R_\mathrm{out}$ [au]')
-	plt.ylabel('Number of discs')
-	plt.yscale('log')
-	#plt.legend()
-	plt.savefig('disc_r_hist.pdf', format='pdf', bbox_inches='tight')
+
+	plt.xlabel('Radius: $R$ [au]')
+	plt.ylabel('Cumulative number of discs with $R_\mathrm{out}<R$')
+	#plt.yscale('log')
+	plt.xscale('log')
+	#plt.yscale('log')
+	plt.ylim([0.0, len(istars)])
+	plt.xlim([5., rmax])
+
+	# Set ticks on all axes
+	ax.tick_params(which='both', bottom=True, left=True, top=True, right=True, direction='in')
+	plt.savefig('disc_r_cumulative'+nonfid+'.pdf', format='pdf', bbox_inches='tight')
 	plt.show()
 
 
 	fig, ax = plt.subplots(figsize=(5.,4.))
 
 	# Plot all disc radii as faint black lines
-	plt.plot(t_arr, disc_arr.T, color='black', alpha=0.1, linewidth=1)
+	plt.plot(t_arr, disc_arr[istars,:].T, color='black', alpha=0.1, linewidth=1)
 
 	# Plot the median and mean as solid and dashed lines
-	median_radius = np.median(disc_arr, axis=0)
-	mean_radius = np.mean(disc_arr, axis=0)
+	median_radius = np.median(disc_arr[istars,:], axis=0)
+	mean_radius = np.mean(disc_arr[istars, :], axis=0)
 
 	plt.plot(t_arr, median_radius, color='red', linestyle='solid', linewidth=1.5, label='Median Radius')
 	plt.plot(t_arr, mean_radius, color='red', linestyle='dashed', linewidth=1.5, label='Mean Radius')
@@ -928,10 +1107,10 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  ten
 	plt.xlim([0., 3.0])
 	plt.xscale('log')
 	plt.xlim([0.01, 3.0])
-	plt.ylim([0., rinit+1.])
+	plt.ylim([0., rmax+1.])
 	ax.tick_params(which='both', top=True, bottom=True, left=True, right=True)
 	plt.legend(loc=3)
-	plt.savefig('disc_r_evol.pdf', format='pdf', bbox_inches='tight')
+	plt.savefig('disc_r_evol'+nonfid+'.pdf', format='pdf', bbox_inches='tight')
 	plt.show()
 
 	return t_arr, disc_arr
@@ -6049,6 +6228,114 @@ def get_cinds(simulation, autocent=True, fsize= 20.0, massrange = [0.1,2.0],radl
 
 	return subvals
 		
+
+def make_mcum(rmag, ms):
+	isort = np.argsort(rmag, axis=1)
+
+	rsort = np.take_along_axis(rmag, isort, axis=1)
+
+	marr = np.ones(rsort.shape)*ms
+
+	mcum = np.cumsum(np.take_along_axis(marr, isort, axis=1), axis=1)
+	
+	mcum /= mcum[:, -1, np.newaxis]
+
+	ihm = np.argmin(np.absolute(mcum-0.5), axis=1)
+
+	hmr = [rsort[it][ir] for it, ir in enumerate(ihm)]
+	return rsort, mcum, hmr
+
+def plot_radii(simulation, agas=1.0):
+	
+	print('Kinetic energy plot: Loading simulation...')	
+
+	t = copy.copy(simulation.t)
+	r = copy.copy(simulation.r)
+	v = copy.copy(simulation.v) 
+	m = copy.copy(simulation.m)
+
+
+	print(r.shape)
+	print(t.shape)
+
+	munits, runits, tunits, vunits = simulation.units_astro
+	r*=runits
+	t*=tunits
+	m*=munits
+
+	rmag = np.linalg.norm(r, axis=-1)
+	iin = rmag[0]<agas
+	iout = ~iin
+
+	rsort, mcum, hmr = make_mcum(rmag, m)
+	rsort_in, mcum_in, hmr_in = make_mcum(rmag[:,iin], m[iin])
+	rsort_out, mcum_out, hmr_out = make_mcum(rmag[:,iout], m[iout])
+
+	print(mcum.shape, rsort.shape)
+	ihm = np.argmin(np.absolute(mcum-0.5), axis=1)
+	# Create a ScalarMappable object for the colormap
+	norm = plt.Normalize(0.0, max(t))
+	cmap = cm.viridis
+	sm = ScalarMappable(norm=norm, cmap=cmap)
+	sm.set_array([])  # An empty array is needed for the ScalarMappable
+
+
+
+	fig, ax = plt.subplots(figsize=(5.,4.))
+	# Loop through the data
+	for it in range(len(t)):
+		# Plot with colors based on t
+		#plt.plot(rsort[it], mcum[it], color=sm.to_rgba(t[it]))
+		plt.plot(rsort_in[it], mcum_in[it], color=sm.to_rgba(t[it]), linewidth=1, linestyle='dotted')
+		plt.plot(rsort_out[it], mcum_out[it], color=sm.to_rgba(t[it]), linewidth=1, linestyle='dashed')
+		# Print rsort[it][ihm[it]]
+		print(rsort[it][ihm[it]])
+		print(ihm[it], np.argmin(np.absolute(mcum[it]-0.5)))
+
+	# Set x-scale to logarithmic
+	plt.xscale('log')
+
+	# Add colorbar
+	plt.colorbar(sm, label='Time')
+
+	# Add ticks on all sides
+	plt.tick_params(which='both', left=True, bottom=True, top=True, right=True, direction='out')
+
+	plt.savefig('cmf.pdf', format='pdf', bbox_inches='tight')
+	# Show plot
+	plt.show()
+
+	fig,ax = plt.subplots(figsize=(5.,4.))
+	plt.plot(t, hmr, label='All')
+	plt.plot(t, hmr_in, label='$r_0 < a_\mathrm{gas}$')
+	plt.plot(t, hmr_out, label='$r_0 > a_\mathrm{gas}$')
+	plt.ylabel('Half-mass radius: $R_\mathrm{hm}$ [pc]')
+	plt.xlabel('Time: $t$ [Myr]')
+	plt.xlim([0., t[-1]])
+	plt.ylim([0.0, int(max(np.amax(hmr_in), np.amax(hmr_out)+1.))])
+	plt.legend(loc='best')
+	plt.tick_params(which='both', left=True, bottom=True, top=True, right=True, direction='out')
+	plt.savefig('hmr_evol.pdf', format='pdf', bbox_inches='tight')
+	plt.show()
+
+	fig,ax = plt.subplots(figsize=(5.,4.))
+
+	plt.scatter(rmag[0, iin], rmag[-1, iin], color='b', marker='+', s=1)
+	plt.scatter(rmag[0, iout], rmag[-1, iout], color='r', marker='^', s=1)
+	plt.xscale('log')
+	plt.yscale('log')
+	plt.xlabel('Initial radius: $r_0$ [pc]')
+	plt.ylabel('Final radius: $r_\mathrm{fin}$ [pc]')
+	plt.tick_params(which='both', left=True, bottom=True, top=True, right=True, direction='out')
+	plt.savefig('init_final_r.pdf', format='pdf', bbox_inches='tight')
+	plt.show()
+
+	iin = rmag[0]<1.0
+	iiout =~iin
+
+
+
+
 
 	
 def plot_KE(simulation, fsize=None, centre = (.0, .0), mfilt=1.0, plot=True,autocent=False, radcentre=5.0, sp_time=0.1, fix_n=None, force=False, theta=0., phi=0.):
