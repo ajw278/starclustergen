@@ -220,7 +220,7 @@ if __name__=='__main__':
                         rtrunc=50.0, nbin0=nbins0, aclose_au=200.0)
             #sim.store_arrays(reread=True)
 
-            sim.evolve(reread=True)
+            sim.evolve(reread=False)
 
 
-            cp.plot_radii(sim)
+            cp.plot_radii(sim, agas=agas, suppress_restart=False)

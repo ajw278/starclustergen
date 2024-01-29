@@ -6320,20 +6320,15 @@ def plot_radii(simulation, agas=1.0):
 
 	fig,ax = plt.subplots(figsize=(5.,4.))
 
-	plt.scatter(rmag[0, iin], rmag[-1, iin], color='b', marker='+', s=1)
-	plt.scatter(rmag[0, iout], rmag[-1, iout], color='r', marker='^', s=1)
+	plt.scatter(rmag[-1, iin], rmag[0, iin], color='b', marker='+', s=1)
+	plt.scatter(rmag[-1, iout], rmag[0, iout], color='r', marker='^', s=1)
 	plt.xscale('log')
 	plt.yscale('log')
-	plt.xlabel('Initial radius: $r_0$ [pc]')
-	plt.ylabel('Final radius: $r_\mathrm{fin}$ [pc]')
+	plt.ylabel('Initial radius: $r_0$ [pc]')
+	plt.xlabel('Final radius: $r_\mathrm{fin}$ [pc]')
 	plt.tick_params(which='both', left=True, bottom=True, top=True, right=True, direction='out')
 	plt.savefig('init_final_r.pdf', format='pdf', bbox_inches='tight')
 	plt.show()
-
-	iin = rmag[0]<1.0
-	iiout =~iin
-
-
 
 
 

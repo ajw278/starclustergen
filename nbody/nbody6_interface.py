@@ -313,7 +313,7 @@ class nbody6_cluster:
 
 		indict  = {}
 		if restart is None:
-			indict['KSTART'] = 1 #1
+			indict['KSTART'] = 1 
 		else:
 			indict['KSTART'] = int(2+restart) #2
 			if restart>3:
@@ -356,10 +356,8 @@ class nbody6_cluster:
 		bigR = np.median(rmags)
 		bigN = len(np.where(rmags<bigR)[0])
 		rho = float(bigN/(4.*np.pi*bigR*bigR*bigR/3.))
-		rguess = 0.05*float(indict['NNBOPT'])*np.power(3./(4.*np.pi*rho),0.3333)
-		print('Rguess:', rguess)
-
-		indict['RS0'] =  rguess #rguess
+		rguess = 0.05*float(indict['NNBOPT'])*np.power(3./(4.*np.pi*rho),1./3.)
+		indict['RS0'] =  rguess 
 		
 		
 		indict['RBAR'] = self.units_astro[1]
