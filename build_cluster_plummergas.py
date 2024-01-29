@@ -10,7 +10,7 @@ import gen_vel as vg
 import gen_vel_gf as vgf
 import sys
 import build_cluster as bc
-
+import shutil
 
 scriptdir = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(scriptdir+'/general')
@@ -160,10 +160,18 @@ if __name__=='__main__':
     for alpha in alphas:
         for beta in betas:
             os.chdir(homdir)
+            print('Current working directory:', os.getcwd())
             dname = 'alpha_%.2lf_beta_%.2lf'%(alpha, beta)
             if not os.path.isdir(dname):
+                print('No directory %s found, creating...'%dname)
                 os.makedirs(dname)
             os.chdir(dname)
+            if os.path.isfile(homdir+'/nbody_path.txt'):
+                print('Found nbody_path, copying to current directory')
+                shutil.copy(homdir+'/nbody_path.txt', './nbody_path.txt')
+            else:
+                print('No nbody_path found, assuming default is correct...')
+
             if not os.path.isfile('sim_ics_r.npy') or not os.path.isfile('sim_ics_v.npy') or not os.path.isfile('sim_ics_m.npy') or not os.path.isfile('sim_gparams.npy'):
 
                 Mgas = alpha*M
