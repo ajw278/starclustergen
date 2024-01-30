@@ -6245,7 +6245,7 @@ def make_mcum(rmag, ms):
 	hmr = [rsort[it][ir] for it, ir in enumerate(ihm)]
 	return rsort, mcum, hmr
 
-def plot_radii(simulation, agas=1.0):
+def plot_radii(simulation, agas=1.0, axtext=None, axhmr=None, axrif=None):
 	
 	print('Kinetic energy plot: Loading simulation...')	
 
@@ -6280,7 +6280,7 @@ def plot_radii(simulation, agas=1.0):
 	sm.set_array([])  # An empty array is needed for the ScalarMappable
 
 
-
+	"""
 	fig, ax = plt.subplots(figsize=(5.,4.))
 	# Loop through the data
 	for it in range(len(t)):
@@ -6293,7 +6293,7 @@ def plot_radii(simulation, agas=1.0):
 		print(ihm[it], np.argmin(np.absolute(mcum[it]-0.5)))
 
 	# Set x-scale to logarithmic
-	plt.xscale('log')
+	axhmr.set_xscale('log')
 
 	# Add colorbar
 	plt.colorbar(sm, label='Time')
@@ -6303,31 +6303,49 @@ def plot_radii(simulation, agas=1.0):
 
 	plt.savefig('cmf.pdf', format='pdf', bbox_inches='tight')
 	# Show plot
+	plt.show()"""
+
+
+	savefig1 = True
+	if axhmr is None:
+		_,axhmr = plt.subplots(figsize=(5.,4.))
+		savefig1=False
+	axhmr.plot(t, hmr, label='All')
+	axhmr.plot(t, hmr_in, label='$r_0 < a_\mathrm{gas}$')
+	axhmr.plot(t, hmr_out, label='$r_0 > a_\mathrm{gas}$')
+	axhmr.ylabel('Half-mass radius: $R_\mathrm{hm}$ [pc]')
+	axhmr.set_xlabel('Time: $t$ [Myr]')
+	axhmr.set_xlim([0., t[-1]])
+	axhmr.set_ylim([0.0, int(max(np.amax(hmr_in), np.amax(hmr_out)+1.))])
+	axhmr.legend(loc='best')
+	axhmr.tick_params(which='both', left=True, bottom=True, top=True, right=True, direction='in')
+	if not axtext is None:
+		axhmr.text(0.95, 0.95, axtxt, ha='right', va='top', transform=axhmr.transAxes)
+
+	if savefig1:
+		plt.savefig('hmr_evol.pdf', format='pdf', bbox_inches='tight')
+
+
 	plt.show()
 
-	fig,ax = plt.subplots(figsize=(5.,4.))
-	plt.plot(t, hmr, label='All')
-	plt.plot(t, hmr_in, label='$r_0 < a_\mathrm{gas}$')
-	plt.plot(t, hmr_out, label='$r_0 > a_\mathrm{gas}$')
-	plt.ylabel('Half-mass radius: $R_\mathrm{hm}$ [pc]')
-	plt.xlabel('Time: $t$ [Myr]')
-	plt.xlim([0., t[-1]])
-	plt.ylim([0.0, int(max(np.amax(hmr_in), np.amax(hmr_out)+1.))])
-	plt.legend(loc='best')
-	plt.tick_params(which='both', left=True, bottom=True, top=True, right=True, direction='out')
-	plt.savefig('hmr_evol.pdf', format='pdf', bbox_inches='tight')
-	plt.show()
 
-	fig,ax = plt.subplots(figsize=(5.,4.))
+	savefig2 = True
+	if axrif is None:
+		_,axrif = plt.subplots(figsize=(5.,4.))
+		savefig2=False
 
-	plt.scatter(rmag[-1, iin], rmag[0, iin], color='b', marker='+', s=1)
-	plt.scatter(rmag[-1, iout], rmag[0, iout], color='r', marker='^', s=1)
-	plt.xscale('log')
-	plt.yscale('log')
-	plt.ylabel('Initial radius: $r_0$ [pc]')
-	plt.xlabel('Final radius: $r_\mathrm{fin}$ [pc]')
-	plt.tick_params(which='both', left=True, bottom=True, top=True, right=True, direction='out')
-	plt.savefig('init_final_r.pdf', format='pdf', bbox_inches='tight')
+
+	axrif.scatter(rmag[-1, iin], rmag[0, iin], color='b', marker='+', s=1)
+	axrif.scatter(rmag[-1, iout], rmag[0, iout], color='r', marker='^', s=1)
+	axrif.set_xscale('log')
+	axrif.set_yscale('log')
+	axrif.set_ylabel('Initial radius: $r_0$ [pc]')
+	axrif.set_xlabel('Final radius: $r_\mathrm{fin}$ [pc]')
+	axrif.tick_params(which='both', left=True, bottom=True, top=True, right=True, direction='in')
+	if not axtext is None:
+		axrif.text(0.95, 0.95, axtxt, ha='right', va='top', transform=axrif.transAxes)
+	if savefig2:
+		plt.savefig('init_final_r.pdf', format='pdf', bbox_inches='tight')
 	plt.show()
 
 

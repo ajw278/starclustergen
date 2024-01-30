@@ -155,11 +155,15 @@ if __name__=='__main__':
 
     alphas = np.array([0.25, 0.5, 1.0 , 2.0])
     betas = np.array([0.25, 0.5, 1.0 , 2.0])
+    num_rows = len(alphas)
+    num_cols = len(betas)
+
+    fig1, ax1 = plt.subplots(num_rows, num_cols, figsize=(12, 12), sharex=True, sharey=True)
+    fig2, ax2 = plt.subplots(num_rows, num_cols, figsize=(12, 12), sharex=True, sharey=True)
 
     homdir = os.getcwd()
-    for alpha in alphas:
-        for beta in betas:
-            os.chdir(homdir)
+    for irow, alpha in enumerate(alphas):
+        for icol, beta in enumerate(betas):
             print('Current working directory:', os.getcwd())
             dname = 'alpha_%.2lf_beta_%.2lf'%(alpha, beta)
             if not os.path.isdir(dname):
@@ -172,11 +176,11 @@ if __name__=='__main__':
             else:
                 print('No nbody_path found, assuming default is correct...')
 
-            if not os.path.isfile('sim_ics_r.npy') or not os.path.isfile('sim_ics_v.npy') or not os.path.isfile('sim_ics_m.npy') or not os.path.isfile('sim_gparams.npy'):
 
+            if not os.path.isfile('sim_ics_r.npy') or not os.path.isfile('sim_ics_v.npy') or not os.path.isfile('sim_ics_m.npy') or not os.path.isfile('sim_gparams.npy'):
+                
                 Mgas = alpha*M
                 agas = beta*a
-
                 trem=0.3
 
                 #gparams = define_gasjumps(Mgas, -Mgas/trem, njumps=1, tdelay=1.0, tend=tend, ascale=1.0)
@@ -220,7 +224,23 @@ if __name__=='__main__':
                         rtrunc=50.0, nbin0=nbins0, aclose_au=200.0)
             #sim.store_arrays(reread=True)
 
-            sim.evolve(reread=False)
+            sim.evolve(reread=False, suppress_restart=False)
 
+            txt = '$\\alpha = {alpha}$, $\\beta = {beta}$'
 
-            cp.plot_radii(sim, agas=agas, suppress_restart=False)
+            cp.plot_radii(sim, agas=gparams[1], axtext=txt, axhmr=ax1[irow][icol], axrif=ax2[irow][icol])
+
+            # Remove tick labels except for the left and bottom-most panels
+            if icol!= 0:
+                ax1[irow][icol].set_yticklabels([])
+                ax2[irow][icol].set_yticklabels([])
+            if irow < (num_rows - 1):
+                ax1[irow][icol].set_xticklabels([])
+                ax2[irow][icol].set_yticklabels([])
+            os.chdir(homdir)
+
+    fig1.tight_layout(pad=0)
+    fig2.tight_layout(pad=0)
+    fig1.savefig('hmr_all.pdf', bbox_inches='tight', format='pdf')
+    fig2.savefig('rinit_v_rfinal.pdf', bbox_inches='tight', format='pdf')
+    plt.show()
