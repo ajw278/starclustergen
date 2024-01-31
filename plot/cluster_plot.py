@@ -6245,7 +6245,7 @@ def make_mcum(rmag, ms):
 	hmr = [rsort[it][ir] for it, ir in enumerate(ihm)]
 	return rsort, mcum, hmr
 
-def plot_radii(simulation, agas=1.0, axtext=None, axhmr=None, axrif=None):
+def plot_radii(simulation, agas=1.0, Mgas=1.0, axtext=None, axhmr=None, axrif=None, axErf=None):
 	
 	print('Kinetic energy plot: Loading simulation...')	
 
@@ -6253,10 +6253,6 @@ def plot_radii(simulation, agas=1.0, axtext=None, axhmr=None, axrif=None):
 	r = copy.copy(simulation.r)
 	v = copy.copy(simulation.v) 
 	m = copy.copy(simulation.m)
-
-
-	print(r.shape)
-	print(t.shape)
 
 	munits, runits, tunits, vunits = simulation.units_astro
 	r*=runits
@@ -6271,7 +6267,6 @@ def plot_radii(simulation, agas=1.0, axtext=None, axhmr=None, axrif=None):
 	rsort_in, mcum_in, hmr_in = make_mcum(rmag[:,iin], m[iin])
 	rsort_out, mcum_out, hmr_out = make_mcum(rmag[:,iout], m[iout])
 
-	print(mcum.shape, rsort.shape)
 	ihm = np.argmin(np.absolute(mcum-0.5), axis=1)
 	# Create a ScalarMappable object for the colormap
 	norm = plt.Normalize(0.0, max(t))
@@ -6306,47 +6301,79 @@ def plot_radii(simulation, agas=1.0, axtext=None, axhmr=None, axrif=None):
 	plt.show()"""
 
 
-	savefig1 = True
+	savefig1 = False
 	if axhmr is None:
-		_,axhmr = plt.subplots(figsize=(5.,4.))
-		savefig1=False
+		fig1,axhmr = plt.subplots(figsize=(5.,4.))
+		savefig1=True
 	axhmr.plot(t, hmr, label='All')
 	axhmr.plot(t, hmr_in, label='$r_0 < a_\mathrm{gas}$')
 	axhmr.plot(t, hmr_out, label='$r_0 > a_\mathrm{gas}$')
-	axhmr.ylabel('Half-mass radius: $R_\mathrm{hm}$ [pc]')
+	axhmr.set_ylabel('Half-mass radius: $R_\mathrm{hm}$ [pc]')
 	axhmr.set_xlabel('Time: $t$ [Myr]')
-	axhmr.set_xlim([0., t[-1]])
-	axhmr.set_ylim([0.0, int(max(np.amax(hmr_in), np.amax(hmr_out)+1.))])
-	axhmr.legend(loc='best')
+	axhmr.set_yscale('log')
+	axhmr.set_xlim([0., 0.99*t[-1]])
+	axhmr.set_ylim([1.0, 200.0])
+	axhmr.legend(loc=2)
 	axhmr.tick_params(which='both', left=True, bottom=True, top=True, right=True, direction='in')
 	if not axtext is None:
-		axhmr.text(0.95, 0.95, axtxt, ha='right', va='top', transform=axhmr.transAxes)
+		axhmr.text(0.95, 0.95, axtext, ha='right', va='top', transform=axhmr.transAxes)
 
 	if savefig1:
-		plt.savefig('hmr_evol.pdf', format='pdf', bbox_inches='tight')
+		fig1.savefig('hmr_evol.pdf', format='pdf', bbox_inches='tight')
+		plt.show()
 
 
-	plt.show()
 
-
-	savefig2 = True
+	ipot = cc.istellar_potential(r[-1]/runits, m/munits, mode='complete')
+	ikin = cc.ikinetic(v[-1], m/munits)
+	binding = ikin - np.absolute(ipot)
+	ibound = binding<=0.0
+	
+	ipot0 = cc.istellar_potential(r[0]/runits, m/munits, mode='complete')
+	ipot0g = cc.igas_potential(r[0]/runits, m/munits, Mgas, agas)
+	ikin0 = cc.ikinetic(v[0], m/munits)
+	binding0 = ikin0 - np.absolute(ipot0) - np.absolute(ipot0g)
+	
+	savefig2 = False
 	if axrif is None:
-		_,axrif = plt.subplots(figsize=(5.,4.))
-		savefig2=False
+		fig2,axrif = plt.subplots(figsize=(5.,4.))
+		savefig2=True
 
-
-	axrif.scatter(rmag[-1, iin], rmag[0, iin], color='b', marker='+', s=1)
-	axrif.scatter(rmag[-1, iout], rmag[0, iout], color='r', marker='^', s=1)
+	axrif.scatter(rmag[-1, iin], rmag[0, iin], color='b', marker='+', s=2, label='$r_0<a_\mathrm{gas}$')
+	axrif.scatter(rmag[-1, iout], rmag[0, iout], color='r', marker='^', s=2, label='$r_0>a_\mathrm{gas}$')
+	axrif.scatter(rmag[-1, ~ibound], rmag[0, ~ibound], color='k', marker='+', s=1, label='Unbound')
 	axrif.set_xscale('log')
 	axrif.set_yscale('log')
 	axrif.set_ylabel('Initial radius: $r_0$ [pc]')
 	axrif.set_xlabel('Final radius: $r_\mathrm{fin}$ [pc]')
 	axrif.tick_params(which='both', left=True, bottom=True, top=True, right=True, direction='in')
+	axrif.legend(loc=2)
 	if not axtext is None:
-		axrif.text(0.95, 0.95, axtxt, ha='right', va='top', transform=axrif.transAxes)
+		axrif.text(0.95, 0.95, axtext, ha='right', va='top', transform=axrif.transAxes)
 	if savefig2:
-		plt.savefig('init_final_r.pdf', format='pdf', bbox_inches='tight')
-	plt.show()
+		fig2.savefig('init_final_r.pdf', format='pdf', bbox_inches='tight')
+		plt.show()
+		
+	
+	
+	savefig3 = False
+	if axErf is None:
+		fig3,axErf= plt.subplots(figsize=(5.,4.))
+		savefig3=True
+
+	axErf.scatter(rmag[-1, iin], binding0[iin], color='b', marker='+', s=2, label='$r_0<a_\mathrm{gas}$')
+	axErf.scatter(rmag[-1, iout], binding0[iout], color='r', marker='^', s=2, label='$r_0>a_\mathrm{gas}$')
+	axErf.scatter(rmag[-1, ~ibound], binding0[~ibound], color='k', marker='+', s=1, label='Unbound')
+	axErf.set_xscale('log')
+	axErf.set_ylabel('Initial energy: $E_0$')
+	axErf.set_xlabel('Final radius: $r_\mathrm{fin}$ [pc]')
+	axErf.tick_params(which='both', left=True, bottom=True, top=True, right=True, direction='in')
+	axErf.legend(loc=2)
+	if not axtext is None:
+		axErf.text(0.95, 0.95, axtext, ha='right', va='top', transform=axrif.transAxes)
+	if savefig3:
+		fig3.savefig('Einit_rfinal.pdf', format='pdf', bbox_inches='tight')
+		plt.show()
 
 
 

@@ -12,6 +12,8 @@ import sys
 import build_cluster as bc
 import shutil
 
+import matplotlib.gridspec as gridspec
+
 scriptdir = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(scriptdir+'/general')
 sys.path.append(scriptdir+'/plot')
@@ -147,19 +149,27 @@ if __name__=='__main__':
     
 
 
-    tend = 50.0
+    tend = 100.0
 
     # Parameters
     a = 1.0    # Scale radius
     M = 1e4    # Total mass
 
-    alphas = np.array([0.25, 0.5, 1.0 , 2.0])
-    betas = np.array([0.25, 0.5, 1.0 , 2.0])
+    trem=10.0
+    alphas = np.array([0.1, 0.25, 0.5, 1.0 ])
+    betas = np.array([0.1, 0.25, 0.5, 1.0])
     num_rows = len(alphas)
     num_cols = len(betas)
 
-    fig1, ax1 = plt.subplots(num_rows, num_cols, figsize=(12, 12), sharex=True, sharey=True)
-    fig2, ax2 = plt.subplots(num_rows, num_cols, figsize=(12, 12), sharex=True, sharey=True)
+    figsize = (12, 12)  # Adjust the figure size as needed
+
+    # Create the figure and gridspec
+    fig1 = plt.figure(figsize=figsize)
+    fig2 = plt.figure(figsize=figsize)
+    fig3 = plt.figure(figsize=figsize)
+    gs1 = gridspec.GridSpec(num_rows, num_cols, figure=fig1, hspace=0, wspace=0)
+    gs2 = gridspec.GridSpec(num_rows, num_cols, figure=fig2, hspace=0, wspace=0)
+    gs3 = gridspec.GridSpec(num_rows, num_cols, figure=fig2, hspace=0, wspace=0)
 
     homdir = os.getcwd()
     for irow, alpha in enumerate(alphas):
@@ -181,7 +191,6 @@ if __name__=='__main__':
                 
                 Mgas = alpha*M
                 agas = beta*a
-                trem=0.3
 
                 #gparams = define_gasjumps(Mgas, -Mgas/trem, njumps=1, tdelay=1.0, tend=tend, ascale=1.0)
                 gparams = np.array([Mgas, agas,0.0, trem])
@@ -221,26 +230,56 @@ if __name__=='__main__':
             sim = nbi.nbody6_cluster(rs.T, vs.T, ms,  outname='clustersim', dtsnap_Myr =0.2, \
                         tend_Myr = tend, gasparams=gparams, etai=0.005, etar=0.005, etau=0.01, dtmin_Myr=1e-8, \
                         rmin_pc=1e-5,dtjacc_Myr=1.0, load=True, ctype='smooth', force_incomp = False, \
-                        rtrunc=50.0, nbin0=nbins0, aclose_au=200.0)
+                        rtrunc=50.0, nbin0=nbins0, aclose_au=200.0, tide='none')
             #sim.store_arrays(reread=True)
 
             sim.evolve(reread=False, suppress_restart=False)
 
-            txt = '$\\alpha = {alpha}$, $\\beta = {beta}$'
+            txt = f'$\\alpha = {alpha}$, $\\beta = {beta}$'
 
-            cp.plot_radii(sim, agas=gparams[1], axtext=txt, axhmr=ax1[irow][icol], axrif=ax2[irow][icol])
+            if irow==0 and icol==0:
+                ax1 = fig1.add_subplot(gs1[irow, icol])
+                ax2 = fig2.add_subplot(gs2[irow, icol])
+                ax3 = fig3.add_subplot(gs3[irow, icol])
+            else:
+                ax1 = fig1.add_subplot(gs1[irow, icol], sharex=ax1, sharey=ax1)
+                ax2 = fig2.add_subplot(gs2[irow, icol], sharex=ax2, sharey=ax2)
+                ax3 = fig3.add_subplot(gs3[irow, icol], sharex=ax3, sharey=ax3)
+                
+            cp.plot_radii(sim, agas=gparams[1], Mgas=gparams[0], axtext=txt, axhmr=ax1, axrif=ax2, axErf=ax3)
 
             # Remove tick labels except for the left and bottom-most panels
-            if icol!= 0:
-                ax1[irow][icol].set_yticklabels([])
-                ax2[irow][icol].set_yticklabels([])
-            if irow < (num_rows - 1):
-                ax1[irow][icol].set_xticklabels([])
-                ax2[irow][icol].set_yticklabels([])
+            # Adjust tick labels for the left-most column and bottom-most row
+            if icol == 0:
+                ax1.tick_params(axis='y', which='both', labelleft=True)
+                ax2.tick_params(axis='y', which='both', labelleft=True)
+                ax3.tick_params(axis='y', which='both', labelleft=True)
+            else:
+                ax1.tick_params(axis='y', which='both', labelleft=False)
+                ax2.tick_params(axis='y', which='both', labelleft=False)
+                ax3.tick_params(axis='y', which='both', labelleft=False)
+                ax1.set_ylabel('')
+                ax2.set_ylabel('')
+                ax3.set_ylabel('')
+                
+            if irow == num_rows - 1:
+                ax1.tick_params(axis='x', which='both', labelbottom=True)
+                ax2.tick_params(axis='x', which='both', labelbottom=True)
+                ax3.tick_params(axis='x', which='both', labelbottom=True)
+            else:
+                ax1.tick_params(axis='x', which='both', labelbottom=False)
+                ax2.tick_params(axis='x', which='both', labelbottom=False)
+                ax3.tick_params(axis='x', which='both', labelbottom=False)
+                ax1.set_xlabel('')
+                ax2.set_xlabel('')
+                ax3.set_xlabel('')
+           
             os.chdir(homdir)
 
     fig1.tight_layout(pad=0)
     fig2.tight_layout(pad=0)
+    fig3.tight_layout(pad=0)
     fig1.savefig('hmr_all.pdf', bbox_inches='tight', format='pdf')
     fig2.savefig('rinit_v_rfinal.pdf', bbox_inches='tight', format='pdf')
+    fig3.savefig('Einit_v_rfinal.pdf', bbox_inches='tight', format='pdf')
     plt.show()

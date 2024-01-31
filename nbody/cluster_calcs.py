@@ -30,6 +30,26 @@ def adjust_com(rvstars, mstars):
 
     return rvstars
 
+def istellar_potential(rstars, mstars, mode=None):
+	
+	if (len (mstars)<7e3 and mode is None) or mode=='complete':
+		gpot_tot = 0.0
+		dr = spatial.distance.cdist(rstars, rstars)
+		dr[np.diag_indices(len(dr), ndim=2)] = np.inf
+		gpot = mstars[np.newaxis,:]*mstars[:, np.newaxis]/dr
+		np.fill_diagonal(gpot,0.0)
+		return np.sum(gpot, axis=1)
+	else:
+		rmag = np.linalg.norm(rstars, axis=-1)
+		isort = np.argsort(rmag)
+		msort = mstars[isort]
+		rsort = rmag[isort]
+
+		Menc = np.cumsum(msort)
+		dpdr = Menc/rsort/rsort
+		dpcs = np.cumsum(dpdr[::-1]*np.gradient(rsort[::-1]))  
+		return 0.5*msort*dpcs[::-1]
+
 def stellar_potential(rstars, mstars):
 	
 	if len (mstars)<7e3:
@@ -54,11 +74,21 @@ def gas_potential(rstars, mstars, Mgas, agas):
 	rmag=np.linalg.norm(rstars, axis=-1)
 	return np.sum(-1 * Mgas*mstars/ np.sqrt(rmag**2 + agas**2))
 
+
+def igas_potential(rstars, mstars, Mgas, agas):
+	rmag=np.linalg.norm(rstars, axis=-1)
+	return -1 * Mgas*mstars/ np.sqrt(rmag**2 + agas**2)
+
+
 def total_kinetic(vstars, mstars):
     vsq = np.linalg.norm(vstars, axis=1)**2
     ke = np.sum(0.5*mstars*vsq)
     return ke
 
+
+def ikinetic(vstars, mstars):
+    vsq = np.linalg.norm(vstars, axis=1)**2
+    return 0.5*mstars*vsq
 
 def binary_sma(r1, r2, v1, v2, m1,m2, G=1.0):
 	dr = r1-r2
