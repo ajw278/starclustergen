@@ -231,11 +231,13 @@ def plot_3dpos(simulation, dim=None, save=True, rlim=30.0, dtmin=0.01):
 def pairwise_analysis(simulation, ndim=2):
 	t = copy.copy(simulation.t)
 	r = copy.copy(simulation.r)
+	v = copy.copy(simulation.v)
 	m = copy.copy(simulation.m)
-	munits, runits, tunits, _ = simulation.units_astro
+	munits, runits, tunits, vunits = simulation.units_astro
 
 	t *= tunits
 	r *= runits
+	v *=vunits
 
 	rbins = np.logspace(-4., 2.0, 25)
 
@@ -250,7 +252,10 @@ def pairwise_analysis(simulation, ndim=2):
 	skip = len(t)//nplot
 	print('Number of times:', len(t))
 	for it in range(0, len(t), skip):
+		np.save('simulation_r_t%.2lf'%t[it], r[it])
+		np.save('simulation_v_t%.2lf'%t[it], v[it])
 		rsep = cdist(r[it, :, :ndim], r[it, :, :ndim])
+
 		rsep = rsep[np.triu_indices(len(rsep), k=1)]
 		rsep = rsep.flatten()
 

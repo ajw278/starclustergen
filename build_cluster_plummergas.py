@@ -152,12 +152,12 @@ if __name__=='__main__':
     tend = 100.0
 
     # Parameters
-    a = 1.0    # Scale radius
+    a = 10.0    # Scale radius
     M = 1e4    # Total mass
 
     trem=10.0
-    alphas = np.array([0.1, 0.25, 0.5, 1.0 ])
-    betas = np.array([0.1, 0.25, 0.5, 1.0])
+    alphas = np.array([0.1, 0.25, 0.5])
+    betas = np.array([0.1, 0.25, 0.5])
     num_rows = len(alphas)
     num_cols = len(betas)
 
