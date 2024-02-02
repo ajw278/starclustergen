@@ -227,7 +227,7 @@ if __name__=='__main__':
             nbins0= 0
             
 
-            sim = nbi.nbody6_cluster(rs.T, vs.T, ms,  outname='clustersim', dtsnap_Myr =0.2, \
+            sim = nbi.nbody6_cluster(rs.T, vs.T, ms,  outname='clustersim', dtsnap_Myr =1.0, \
                         tend_Myr = tend, gasparams=gparams, etai=0.005, etar=0.005, etau=0.01, dtmin_Myr=1e-8, \
                         rmin_pc=1e-5,dtjacc_Myr=1.0, load=True, ctype='smooth', force_incomp = False, \
                         rtrunc=50.0, nbin0=nbins0, aclose_au=200.0)
