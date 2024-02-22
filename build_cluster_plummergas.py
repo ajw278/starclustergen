@@ -238,8 +238,8 @@ if __name__=='__main__':
                         rtrunc=50.0, nbin0=nbins0, aclose_au=200.0)
             #sim.store_arrays(reread=True)
 
-            sim.evolve(reread=False, suppress_restart=False)
-
+            sim.evolve(reread=True, suppress_restart=False)
+            #exit()
             txt = f'$\\alpha = {alpha}$, $\\beta = {beta}$'
             if os.path.isdir('pre_exp'):
             	shutil.rmtree('pre_exp')

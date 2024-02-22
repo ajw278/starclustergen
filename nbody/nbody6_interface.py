@@ -210,11 +210,14 @@ class nbody6_cluster:
 			print('Recovered simulation segments with the following end times (nbody units):')
 			print(self.tends)
 			if hasattr(self, 't'):
-				if self.t[-1]>self.tends[-1]*0.99:
-					print('Last t:', self.t[-1])
-					print('Specified end time: ', self.tend)
-					print('Setting simulation to "complete"')
-					self.complete=True
+				if len(self.t)>0:
+					if self.t[-1]>self.tends[-1]*0.99:
+						print('Last t:', self.t[-1])
+						print('Specified end time: ', self.tend)
+						print('Setting simulation to "complete"')
+						self.complete=True
+				else:
+					self.complete=False
 		if (load_succ and self.complete and not hasattr(self, 'r')) or force_incomp:
 			if not force_incomp:
 				print('No positional array found, assuming simulation is incomplete...')
@@ -653,11 +656,11 @@ class nbody6_cluster:
 
 			files_all = []
 			for iconf in range(nmax):
-				files_tmp = glob.glob('conf.3_'+str(iconf)+'.*')
+				files_tmp = glob.glob('conf.3_'+str(iconf)+'*')
 				print(os.getcwd())
 				print(files_tmp)
 				
-				if len(files_tmp)>0:
+				if len(files_tmp)>1:
 					fle_nums = np.zeros(len(files_tmp))
 					for ifle in range(len(files_tmp)):
 						fle_nums[ifle] = float(files_tmp[ifle].split('.')[-1])
@@ -665,6 +668,9 @@ class nbody6_cluster:
 					ifile_srt = np.argsort(fle_nums)
 					for ifile in ifile_srt:
 						files_all.append(files_tmp[ifile])
+				elif len(files_tmp)==1:
+					files_all.append(files_tmp[0])
+				
 
 			print('All files:', files_all)
 			print('CWD:', os.getcwd())
