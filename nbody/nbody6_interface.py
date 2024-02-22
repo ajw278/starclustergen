@@ -993,7 +993,7 @@ class nbody6_cluster:
 				os.chdir(self.dirs[idir])
 				print('Current directory:', os.getcwd())
 			
-				outfiles = glob.glob('conf.3_0.*')
+				outfiles = glob.glob('conf.3_*')
 
 
 				

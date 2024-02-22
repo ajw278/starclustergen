@@ -236,8 +236,7 @@ if __name__=='__main__':
                         tend_Myr = tend, gasparams=gparams, etai=0.005, etar=0.005, etau=0.01, dtmin_Myr=1e-8, \
                         rmin_pc=1e-5,dtjacc_Myr=1.0, load=True, ctype='smooth', force_incomp = False, \
                         rtrunc=50.0, nbin0=nbins0, aclose_au=200.0)
-            #sim.store_arrays(reread=True)
-
+            sim.store_arrays(reread=True)
             sim.evolve(reread=True, suppress_restart=False)
             #exit()
             txt = f'$\\alpha = {alpha}$, $\\beta = {beta}$'
@@ -285,6 +284,8 @@ if __name__=='__main__':
            
             os.chdir(homdir)
             del sim
+
+            #plt.show()
 
     fig1.tight_layout(pad=0)
     fig2.tight_layout(pad=0)
