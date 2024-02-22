@@ -149,12 +149,13 @@ if __name__=='__main__':
     
 
 
-    tend = 200.0
+    tend = 100.0
 
     # Parameters
-    a = 10.0    # Scale radius
+    a = 5.0    # Scale radius
     M = 1e5    # Total mass
 
+    texp = 2.0
     trem=20.0
     alphas = np.array([0.1, 0.25, 0.5])
     betas = np.array([0.1, 0.25, 0.5])
@@ -193,7 +194,11 @@ if __name__=='__main__':
                 agas = beta*a
 
                 #gparams = define_gasjumps(Mgas, -Mgas/trem, njumps=1, tdelay=1.0, tend=tend, ascale=1.0)
-                gparams = np.array([Mgas, agas,0.0, trem])
+                if texp==0.0:
+                	gparams = np.array([Mgas, agas,0.0, trem])
+                else:
+                	gparams = np.array([Mgas, agas,Mgas/texp, trem])
+                	
                 mmin= 0.08
 
                 imf_func = bc.get_kroupa_imf(mmin=mmin)
@@ -227,7 +232,7 @@ if __name__=='__main__':
             nbins0= 0
             
 
-            sim = nbi.nbody6_cluster(rs.T, vs.T, ms,  outname='clustersim', dtsnap_Myr =1.0, \
+            sim = nbi.nbody6_cluster(rs.T, vs.T, ms,  outname='clustersim', dtsnap_Myr =10.0, \
                         tend_Myr = tend, gasparams=gparams, etai=0.005, etar=0.005, etau=0.01, dtmin_Myr=1e-8, \
                         rmin_pc=1e-5,dtjacc_Myr=1.0, load=True, ctype='smooth', force_incomp = False, \
                         rtrunc=50.0, nbin0=nbins0, aclose_au=200.0)
@@ -236,6 +241,10 @@ if __name__=='__main__':
             sim.evolve(reread=False, suppress_restart=False)
 
             txt = f'$\\alpha = {alpha}$, $\\beta = {beta}$'
+            if os.path.isdir('pre_exp'):
+            	shutil.rmtree('pre_exp')
+            if os.path.isdir('post_exp'):
+            	shutil.rmtree('post_exp')
 
             if irow==0 and icol==0:
                 ax1 = fig1.add_subplot(gs1[irow, icol])
@@ -275,6 +284,7 @@ if __name__=='__main__':
                 ax3.set_xlabel('')
            
             os.chdir(homdir)
+            del sim
 
     fig1.tight_layout(pad=0)
     fig2.tight_layout(pad=0)

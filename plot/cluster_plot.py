@@ -237,7 +237,7 @@ def pairwise_analysis(simulation, ndim=2):
 
 	t *= tunits
 	r *= runits
-	v *=vunits
+	v *= vunits
 
 	rbins = np.logspace(-4., 2.0, 25)
 
@@ -254,6 +254,8 @@ def pairwise_analysis(simulation, ndim=2):
 	for it in range(0, len(t), skip):
 		np.save('simulation_r_t%.2lf'%t[it], r[it])
 		np.save('simulation_v_t%.2lf'%t[it], v[it])
+		print(r[it], runits)
+		print(v[it], vunits)
 		rsep = cdist(r[it, :, :ndim], r[it, :, :ndim])
 
 		rsep = rsep[np.triu_indices(len(rsep), k=1)]
@@ -6250,15 +6252,24 @@ def make_mcum(rmag, ms):
 	hmr = [rsort[it][ir] for it, ir in enumerate(ihm)]
 	return rsort, mcum, hmr
 
-def plot_radii(simulation, agas=1.0, Mgas=1.0, axtext=None, axhmr=None, axrif=None, axErf=None):
+def plot_radii(simulation, agas=1.0, Mgas=1.0, nsubset=1000, axtext=None, axhmr=None, axrif=None, axErf=None):
 	
-	print('Kinetic energy plot: Loading simulation...')	
 
 	t = copy.copy(simulation.t)
 	r = copy.copy(simulation.r)
 	v = copy.copy(simulation.v) 
 	m = copy.copy(simulation.m)
-
+	print(r.shape)
+	factor = float(r.shape[1])/float(nsubset)
+	isubset=  np.random.choice(np.arange(r.shape[1]), size=nsubset, replace=False)
+	
+	r = r[:, isubset,:]
+	v = v[:, isubset,:]
+	m = m[isubset]
+	m *= factor
+	print(r.shape)
+	print(v.shape)
+	print(m.shape)
 	munits, runits, tunits, vunits = simulation.units_astro
 	r*=runits
 	t*=tunits

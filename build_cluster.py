@@ -670,8 +670,9 @@ if __name__=='__main__':
     #sim.store_arrays(reread=True)
     sim.evolve(reread=False)
 
+
+    cp.plot_dvNN_fromsim(sim, time=1.0, r0=r0, p=p, sv0=sv0)
     cp.pairwise_analysis(sim, ndim=2)
-    #cp.plot_dvNN_fromsim(sim, time=1.0, r0=r0, p=p, sv0=sv0)
     #exit()
     #cp.plot_3dpos(sim)
     #enchist = cp.encounter_analysis(sim)
