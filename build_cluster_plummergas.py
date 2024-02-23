@@ -285,6 +285,11 @@ if __name__=='__main__':
             os.chdir(homdir)
             del sim
 
+            fig1.savefig('hmr_all.pdf', bbox_inches='tight', format='pdf')
+            fig2.savefig('rinit_v_rfinal.pdf', bbox_inches='tight', format='pdf')
+            fig3.savefig('Einit_v_rfinal.pdf', bbox_inches='tight', format='pdf')
+            if icol==1:
+                exit()
             #plt.show()
 
     fig1.tight_layout(pad=0)
