@@ -155,7 +155,7 @@ if __name__=='__main__':
     a = 5.0    # Scale radius
     M = 1e5    # Total mass
 
-    texp = 2.0
+    texp = 0.0
     trem=20.0
     alphas = np.array([0.1, 0.25, 0.5])
     betas = np.array([0.1, 0.25, 0.5])
