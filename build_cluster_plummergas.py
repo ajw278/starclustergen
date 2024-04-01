@@ -240,7 +240,7 @@ if __name__=='__main__':
 
 				sim = nbi.nbody6_cluster(rs.T, vs.T, ms,  outname='clustersim', dtsnap_Myr =10.0, \
 				tend_Myr = tend, gasparams=gparams, etai=0.05, etar=0.05, etau=0.05, dtmin_Myr=1e-5, \
-				rmin_pc=1e-5,dtjacc_Myr=1.0, load=True, ctype='smooth', force_incomp = False, \
+				rmin_pc=1e-5,dtjacc_Myr=0.1, load=True, ctype='smooth', force_incomp = False, \
 				rtrunc=50.0, nbin0=nbins0, aclose_au=200.0)
 				#sim.store_arrays(reread=True)
 				sim.evolve(reread=True, suppress_restart=True)
@@ -305,4 +305,4 @@ if __name__=='__main__':
 		fig1.savefig('hmr_all_%d.pdf'%ig, bbox_inches='tight', format='pdf')
 		fig2.savefig('rinit_v_rfinal_%d.pdf'%ig, bbox_inches='tight', format='pdf')
 		fig3.savefig('Einit_v_rfinal_%d.pdf'%ig, bbox_inches='tight', format='pdf')
-		plt.show()
+	plt.show()

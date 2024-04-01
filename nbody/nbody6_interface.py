@@ -372,7 +372,7 @@ class nbody6_cluster:
 		print('Units:', self.units_astro)
 		#QE - energy tolerance	7
 		if type(self.gasparams[self.idir])!=type(None):
-			indict['QE'] = 5.0E-02
+			indict['QE'] = 1.0
 		else:
 			indict['QE'] = 5.0E-02
 
