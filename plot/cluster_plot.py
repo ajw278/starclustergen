@@ -26,6 +26,7 @@ import binary_reader as bread
 import scipy.interpolate as interpolate
 import scipy.stats as ss
 
+import random
 plt.rc('text', usetex=True)
 plt.rc('text.latex', preamble='\\usepackage{color}')
 
@@ -122,25 +123,177 @@ def plot_dvNN(r, v, ndim=3, **svparams):
 		plt.colorbar(ctf, label='Normalised MB probability: $\log [v g(v)]$')
 
 		rsp = np.logspace(-4, 2.0, 40)
-		plt.plot(rsp, sigv_pl(rsp, **svparams)/1e5, color='r', linewidth=2)
-		plt.scatter(nearest_neighbor_distances, velocity_differences, c='cyan', edgecolor='gray', s=5)
+		plt.plot(rsp, sigv_pl(rsp, **svparams)/1e5, color='k', linewidth=2)
+		plt.scatter(nearest_neighbor_distances, velocity_differences, c='cyan', edgecolor='red', s=5)
 	else:
-		plt.scatter(nearest_neighbor_distances, velocity_differences, c='k', edgecolor='gray', s=5)
+		plt.scatter(nearest_neighbor_distances, velocity_differences, c='k', edgecolor='red', s=5)
 		
 
 	ax.tick_params(which='both', axis='both', right=True, top=True, left=True, bottom=True)
 
 	plt.yscale('log')
 	plt.xscale('log')
-	plt.xlabel('%dD separation of nearest neighbour: $\Delta r$ [pc]'%ndim)
-	plt.ylabel('%dD velocity difference of nearest neighbour: $\Delta v$ [km/s]'%ndim)
+	if ndim==2:
+		plt.xlabel('%dD separation of nearest neighbour: $\Delta R$ [pc]'%ndim)
+	else:
+		plt.xlabel('%dD separation of nearest neighbour: $\Delta r$ [pc]'%ndim)
+	plt.ylabel('%dD velocity difference of nearest neighbour [km/s]'%ndim)
 	plt.xscale('log')
 	plt.yscale('log')
-	plt.xlim([1e-5, 10.])
+	plt.xlim([1e-4, 10.])
 	plt.ylim([2e-2, 10.])
 	plt.savefig('vdist_%dD.pdf'%ndim, bbox_inches='tight', format='pdf')
 
 	plt.show()
+	
+
+
+def filter_closepairs(rstars, rsingle=0.01, ndim=2):
+    # Compute pairwise distances between all stars
+    dr = cdist(rstars[:, :ndim], rstars[:, :ndim])
+    
+    # Initialize a list to store the combined positions
+    combined_positions = []
+    
+    # Initialize a list to keep track of visited stars
+    visited = set()
+    
+    # Loop through each star
+    for i in range(len(rstars)):
+        if i not in visited:
+            # Find stars within rsingle distance
+            close_stars = np.where(dr[i] <= rsingle)[0]
+            
+            # Check if any close stars found
+            if len(close_stars) > 1:
+                # Include current star in visited set
+                visited.add(i)
+                
+                # Loop through each close star
+                for j in close_stars:
+                    if j != i and j not in visited:
+                        # Compute midpoint between current star and close star
+                        midpoint = (rstars[i, :ndim] + rstars[j, :ndim]) / 2
+                        combined_positions.append(midpoint)
+                        
+                        # Include close star in visited set
+                        visited.add(j)
+                  	
+            else:
+                # If no close stars found, include current star
+                combined_positions.append(rstars[i, :ndim])
+                visited.add(i)
+    
+    # Convert combined_positions to a numpy array
+    combined_positions = np.array(combined_positions)
+    
+    return combined_positions
+   
+
+def one_point_corr(rstars, rsingle=0.01, ndim=2):
+	dr = cdist(rstars[:, :ndim], r[:, :ndim])
+
+def plot_corrfuncs(simulation, time=1.0, rsingle=0.01, ndim=2):
+	r = copy.copy(simulation.r)
+	t = copy.copy(simulation.t)
+	munits, runits, tunits, vunits = simulation.units_astro
+	it = np.argmin(np.absolute(t*tunits - time))
+	
+	r = r[it]
+	r *= runits
+	
+	r[:, 0] -= np.amin(r[:, 0])
+	r[:, 1] -= np.amin(r[:, 1])
+	rsub =  filter_closepairs(r, rsingle=rsingle, ndim=ndim)
+	
+	plt.scatter(rsub[:,0], rsub[:,1], s=4)
+	plt.scatter(r[:,0], r[:,1], s=1 )
+	plt.show()
+	
+	print(rsub.shape)
+	Rbox = np.amax(np.absolute(rsub))/2.
+	print(Rbox)
+	
+	Ntest=1
+	for i in range(Ntest):
+		rrand = Rbox*np.random.uniform(size=(len(rsub), 2))
+		drrand =  cdist(rrand, rrand)
+	
+	
+	
+	
+	# Calculate pairwise distances for combined positions
+	dr_combined = cdist(rsub, rsub)
+	
+	np.fill_diagonal(dr_combined, np.inf)
+	
+	dr_min = np.amin(dr_combined, axis=1)
+
+	# Flatten the upper triangle of the distance matrix
+	distances = dr_min.flatten()
+	
+	
+	distances_all = dr_combined.flatten()
+	distances_all = distances_all[np.isfinite(distances_all)]
+	
+	
+	# Define logarithmic bins
+	bins_all = np.logspace(np.log10(min(distances_all)), np.log10(Rbox*0.7), num=24)
+
+	# Calculate histogram of distances with logarithmic bins
+	hist_all, _ = np.histogram(distances_all, bins=bins_all)
+	
+	
+
+	# Calculate the excess number of pairs compared to random distribution
+	n_pairs_all = len(distances_all)
+	n_stars = len(rsub)
+	R = (bins_all[1:]+bins_all[:-1])/2.
+	density = n_stars/(np.pi*Rbox**2)
+	corr_func_2p = hist_all / (len(distances)*np.diff(bins_all)*2.*np.pi*R*density)
+	
+	
+
+	# Define logarithmic bins
+	bins = np.logspace(np.log10(min(distances)), np.log10(max(distances)), num=20)
+
+	# Calculate histogram of distances with logarithmic bins
+	hist, _ = np.histogram(distances, bins=bins)
+	
+	
+
+	# Calculate the excess number of pairs compared to random distribution
+	n_pairs = len(distances)
+	n_stars = len(rsub)
+	random_pairs = n_stars * (n_stars - 1) / 2
+	R = (bins[1:]+bins[:-1])/2.
+	corr_func = hist / (len(distances)*np.diff(bins)*2.*np.pi*R*density* np.exp(-np.pi*R*R*density))
+
+	fig,ax  = plt.subplots(figsize=(5.,4.))
+	# Plot the 1-point correlation function
+	plt.scatter(bins_all[:-1]*0.409, corr_func_2p, marker='s', s=4, color='gray',  label='Two-point: $\\xi$')
+	plt.scatter(bins[:-1]*0.409, corr_func, marker='o', s=4, color='b', label='One-point: $\\Psi$')
+	xsp = np.logspace(-4., 1.)
+	plt.axvline(0.5, color='k', linewidth=1, linestyle='dashed')
+	plt.axvline(0.1, color='k', linewidth=1, linestyle='dashed')
+	plt.plot(xsp, (xsp/0.1)**-1.5, color='r', linewidth=1, label='$\Psi \propto \Delta R^{-1.5}$' )
+	plt.axhline(1.0, color = 'k', linewidth=2)
+	#plt.plot(bins[:-1], len(distances)*np.diff(bins)*2.*np.pi*R*density* np.exp(-np.pi*R*R*density), marker='o')
+	plt.xscale('log')
+	plt.yscale('log')
+	
+	ax.tick_params(which='both', axis='both', left=True, right=True, bottom=True, top=True)
+	plt.xlim([1e-3, 4.])
+	plt.ylim([3e-3, 1e4])
+	plt.legend(loc='best')
+	plt.xlabel('Angular separation: $\Delta R$ [degrees]')
+	plt.ylabel('Correlation Function')
+	plt.grid(True)
+	plt.savefig('correlation_functions.pdf', bbox_inches='tight', format='pdf')
+	plt.show()
+	
+
+
 
 def MB_dist(v_, sig, nd=3):
     signd = sig 
@@ -152,9 +305,9 @@ def svkep(dr):
 	return 32.8*1e2*np.sqrt(1./dr)
 
 def sigv_pl(dr, r0=1.0, p=1., sv0=1.0):
-    return np.sqrt((sv0*(dr/r0)**p)**2) #+ svkep(dr)**2)
+    return np.sqrt((sv0*(dr/r0)**p)**2+ svkep(dr)**2)
 
-def plot_dvNN_fromsim(simulation, time=2.0, mmin=0.1, **plparams):
+def plot_dvNN_fromsim(simulation, time=2.0, mmin=0.1,ndim=2,  **plparams):
 
 	
 	t = copy.copy(simulation.t)
@@ -168,7 +321,7 @@ def plot_dvNN_fromsim(simulation, time=2.0, mmin=0.1, **plparams):
 	
 	it = np.argmin(np.absolute(t*tunits - time))
 
-	plot_dvNN(r[it], v[it], **plparams)
+	plot_dvNN(r[it], v[it], ndim=ndim, **plparams)
 	
 
 
@@ -406,7 +559,7 @@ def compare_encanalysis(simulation, istars, direct_s='enchist', direct_b='enchis
 	plt.show()
 		
 
-def encounter_analysis(simulation, plotall=True, direct='enchist', plotstars=[]): # plotstars=[173, 283, 569, 631, 844, 1019]):#[140, 270, 283, 296, 370, 456, 509, 631, 713, 1000, 1019]):
+def encounter_analysis(simulation, plotall=False, direct='enchist', plotstars=[]):# [17, 21, 54, 148, 244, 245, 343, 344, 370, 624, 736] plotstars=[17, 21, 54, 244, 245, 343, 344, 370, 624] ): #16, 17, 75, 206, 250, 251, 340, 666[16, 17, 206, 250, 251, 340]): # [16,17, 38, 39, 182, 206, 250, 251, 340, 645] plotstars=[173, 283, 569, 631, 844, 1019]):#[140, 270, 283, 296, 370, 456, 509, 631, 713, 1000, 1019]):
 	#plotstars=[140, 296, 509, 631, 713]
 	#,plotstars=[34, 84, 140, 270, 283, 738, 1000, 1019]
 	#[227,  397, 450, 481, 608, 649, 655, 736]):
@@ -466,6 +619,7 @@ def encounter_analysis(simulation, plotall=True, direct='enchist', plotstars=[])
 					plt.plot(t*tunits, np.linalg.norm(cxb[inghbr], axis=1)*runits/au2pc, color=mpl_cols[icol%len(mpl_cols)], linewidth=1) #, s=1)
 					#plt.plot(t*tunits, np.linalg.norm(cxb[inghbr], axis=1)*runits/au2pc, linestyle='dashed', color='r', linewidth=1)
 					plt.scatter(np.array(logst[inghbr])*tunits, np.array(logsx[inghbr])*runits/au2pc, color=mpl_cols[icol%len(mpl_cols)], marker='+', s=30)
+					
 				icol+=1
 
 			if plotall or istar in plotstars:
@@ -474,7 +628,7 @@ def encounter_analysis(simulation, plotall=True, direct='enchist', plotstars=[])
 				plt.yscale('log')
 				#plt.title('Star %d'%istar)
 				plt.xlim([0., 1.5])
-				plt.ylim([10., 1e5])
+				plt.ylim([10., 1e4])
 				ax.tick_params(which='both', left=True, right=True, top=True, bottom=True)
 				plt.savefig(simulation.out+'_enchist_{0}.pdf'.format(istar), format='pdf', bbox_inches='tight')
 				plt.show()
@@ -545,34 +699,58 @@ m2 = 0.1
 print((Rtrunc(Rp, m1, Ro, e, m2)-Ro)/Ro)
 exit()"""
 
-def compute_discevol(tseries, Rinit, Mst, Rps, eps, Mps, tps, rmin=10.0):
+def compute_discevol(tseries, Rinit, Mst, Rps, eps, Mps, tps, rmin=10.0, trev=np.inf):
 
 	rdisc = Rinit*np.ones(tseries.shape)
+	evol=False
+	if np.isfinite(trev):
+		rdisc = Rinit*np.exp(-tseries/trev)
+		evol=True
+		
 	for i, rp in enumerate(Rps):
-		rd_  = rdisc[-1]
-		if rp<10.0:
+		iolder = np.where(tseries>tps[i])[0]
+		iprev = iolder[0]-1
+		rd_  = rdisc[iprev]*np.exp(-(tps[i]-tseries[iprev])/trev)
+		if rp<rmin:
 			rnew = 0.1
 		else:
 			rnew = Rtrunc(rp, Mst, rd_, eps[i], Mps[i])
 		#print('Encounter params (rp, mst, rd, eps, mp):', rp, Mst, rd_, eps[i], Mps[i])
-		iolder = tseries>tps[i]
 		rdisc[iolder] = rnew
+		if evol:
+			rdisc[iolder] = rdisc[iolder[0]]*np.exp(-(tseries[iolder]-tseries[iolder[0]])/trev)
 	
 	return rdisc
 
 
-def strong_enc_times(t_arr, disc_arr, drmin=0.01, split=False, enckeys=None):
+def strong_enc_times(t_arr, disc_arr, drmin=0.01, split=False, enckeys=None, trev=np.inf):
 	# Identify time steps where the radius decreases
 	print(disc_arr.shape, disc_arr[:, -1].shape, t_arr.shape)
 	if not enckeys is None:
 		disc_arr = disc_arr[enckeys, :]
 
-	
 	d_arr = np.append(disc_arr, disc_arr[:, [-1]], axis=-1)
-	drrat = np.diff(d_arr, axis=1)/disc_arr
+	if np.isfinite(trev):
+		d_arr_nxt = d_arr[:, :-1]*np.exp(-np.diff(t_arr, append=t_arr[-1])[np.newaxis, :]/trev)
+		drrat = (d_arr[:, 1:]-d_arr_nxt)/disc_arr
+				
+	else:
+		drrat = np.diff(d_arr, axis=1)/disc_arr
+		exit()
 	strenc = (drrat < -drmin)
 	
+	plt.scatter(t_arr, np.absolute(drrat[250,:]), s=1)
+	plt.scatter(t_arr[strenc[250]], np.ones(int(np.sum(strenc[250])))*1e-15, s=1)
+	plt.yscale('log')
+	plt.show()
+	
+	
 	tgr = t_arr[np.newaxis,:]*np.ones(disc_arr.shape)
+	
+	plt.scatter(tgr[strenc], -drrat[strenc])
+	plt.xscale('log')
+	plt.yscale('log')
+	plt.show()
 
 
 	if not split:
@@ -725,7 +903,7 @@ def get_imf_cdf(mmin=0.01):
     return interpolate.interp1d(msp, cdf)
 
 
-def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  tend=None, mmin=0.08):
+def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.2,  tend=None, mmin=0.08, tevol = np.inf):
 	
 	#Take stellar masses from simulation
 	m = copy.copy(simulation.m)
@@ -766,6 +944,9 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  ten
 
 	else:
 		nonfid = '_'+str(rinit)
+		
+	if np.isfinite(tevol):
+		nonfid +='_tev_'+str(tevol)
 
 	#Select the positional snapshot to plot at the end
 	itplot = np.argmin(np.absolute(t-tplot))
@@ -794,8 +975,11 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  ten
 			#t_order = np.append(t_order, logst[inghbr]*tunits) 
 			#m_order = np.append(m_order, np.ones(len(logsx[inghbr]))*cm[inghbr]*munits)
 			if mstarrel:
-					rinit = rm_rel(m[ikey])
-			disc_arr[ikey] = compute_discevol(t_arr, rinit, m[ikey], x_order, e_order, m_order, t_order)
+				rinit = rm_rel(m[ikey])
+					
+			disc_arr[ikey] = compute_discevol(t_arr, rinit, m[ikey], x_order, e_order, m_order, t_order, trev=tevol)
+			
+			
 			#print(m[ikey]*munits, m_order,  x_order, t_order)
 
 			#plt.plot(t_arr, disc_arr[ikey])
@@ -810,18 +994,21 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  ten
 		istars = np.load('enchist_keys.npy').flatten()
 	
 
-	drmin = 0.01
+	drmin = 0.001
 	tfilt = 0.01
 	#Find the times and change in disc radius for weak encounters 
-	tencs, drencs = strong_enc_times(t_arr, disc_arr, drmin=drmin, split=False, enckeys=istars)
+	tencs_med, drencs_med = strong_enc_times(t_arr, disc_arr, drmin=0.01, split=False, enckeys=istars, trev=tevol)
+	tencs, drencs = strong_enc_times(t_arr, disc_arr, drmin=drmin, split=False, enckeys=istars, trev=tevol)
+	
+	
 
 	#Find the times and change in disc radius for strong encounters, split into indvidual stars
-	tencs_splt, drence_splt, istar_splt = strong_enc_times(t_arr, disc_arr, drmin=0.01, split=True, enckeys=istars)
+	tencs_splt, drencs_splt, istar_splt = strong_enc_times(t_arr, disc_arr, drmin=drmin, split=True, enckeys=istars, trev=tevol)
 	
-	tencs_splt_str, drence_splt_str, istar_splt_str = strong_enc_times(t_arr, disc_arr, drmin=0.1, split=True, enckeys=istars)
+	tencs_splt_str, drencs_splt_str, istar_splt_str = strong_enc_times(t_arr, disc_arr, drmin=0.1, split=True, enckeys=istars, trev=tevol)
 
 	#Find the times and change in disc radius for strong encounters (not split up)
-	tencs_str, drencs_str = strong_enc_times(t_arr, disc_arr, drmin=0.1, split=False, enckeys=istars)
+	tencs_str, drencs_str = strong_enc_times(t_arr, disc_arr, drmin=0.1, split=False, enckeys=istars, trev=tevol)
 
 	#Only include encounters for stars older than lower time limit
 	ifenc = tencs > tfilt
@@ -830,7 +1017,7 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  ten
 
 	# Create a 2D histogram
 	bins_lt = np.linspace(np.log10(0.01),np.log10(3.0), 8)
-	bins_ldr = np.linspace(np.log10(drmin),0.0, 7)
+	bins_ldr = np.linspace(np.log10(drmin),0.0, 9)
 
 	bins_t = 10.**bins_lt
 	#bins_dr = 10.**bins_ldr
@@ -850,13 +1037,25 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  ten
 	# Scatter plot
 	ax1 = plt.subplot(gs[0])
 	#ax1.hist(tencs, bins=bins_t, histtype='step', alpha=0.7, edgecolor='black', density=False)
+	
+	
 	hist_values, bin_edges = np.histogram(np.log10(tencs), bins=bins_lt)
 	hist_values = np.asarray(hist_values, dtype=float)
 	hist_values /= np.diff(bins_t)
 
-	print(bin_edges[:-1], hist_values)
 	# Manually plot the histogram using matplotlib
-	ax1.bar(bin_edges[:-1], hist_values, width=np.diff(bin_edges), edgecolor='black', facecolor='None', align='edge', label='$-\Delta R_\mathrm{out}/R_\mathrm{out} >0.01$')
+	ax1.bar(bin_edges[:-1], hist_values, width=np.diff(bin_edges), edgecolor='lightgray', facecolor='None', align='edge', label='$-\Delta R_\mathrm{out}/R_\mathrm{out} > 10^{%d}$'%(np.log10(drmin)))
+	
+	
+	
+	hist_values, bin_edges = np.histogram(np.log10(tencs_med), bins=bins_lt)
+	hist_values = np.asarray(hist_values, dtype=float)
+	hist_values /= np.diff(bins_t)
+
+	# Manually plot the histogram using matplotlib
+	ax1.bar(bin_edges[:-1], hist_values, width=np.diff(bin_edges), edgecolor='gray', facecolor='None', align='edge', label='$-\Delta R_\mathrm{out}/R_\mathrm{out} > 10^{%d}$'%(np.log10(0.01)))
+	
+	
 
 
 	hist_values, bin_edges = np.histogram(np.log10(tencs_str), bins=bins_lt)
@@ -864,7 +1063,7 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  ten
 	hist_values /= np.diff(bins_t)
 
 	# Manually plot the histogram using matplotlib
-	ax1.bar(bin_edges[:-1], hist_values, width=np.diff(bin_edges), edgecolor='red', facecolor='None', align='edge', label='$-\Delta R_\mathrm{out}/R_\mathrm{out} >0.1$')
+	ax1.bar(bin_edges[:-1], hist_values, width=np.diff(bin_edges), edgecolor='black', facecolor='None', align='edge', label='$-\Delta R_\mathrm{out}/R_\mathrm{out} >0.1$')
 
 	# 2D Histogram
 	ax2 = plt.subplot(gs[2], sharex=ax1)
@@ -872,7 +1071,7 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  ten
 	print(bc_lt, bc_ldr, hist.T)
 	cax = ax2.pcolormesh(bc_lt, bc_ldr, hist.T, cmap='viridis', shading='nearest', vmin=0.0, vmax=3.5)	
 	for ist in range(len(tencs_splt)):
-		ax2.plot(np.log10(tencs_splt[ist]), np.log10(-drence_splt[ist]), color='pink', alpha=0.2, linewidth=1)
+		ax2.plot(np.log10(tencs_splt[ist]), np.log10(-drencs_splt[ist]), color='pink', alpha=0.2, linewidth=1)
 	ax2.scatter(np.log10(tencs), np.log10(-drencs), color='pink', marker='s', edgecolor='gray', s=5, alpha=0.5)
 
 
@@ -899,7 +1098,7 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  ten
 	ax1.set_yscale('log')
 	ax1.set_ylim([3., 5e4])
 	ax2.set_xlim([-2., np.log10(3.0)])
-	ax2.set_ylim([-2., 0.0])
+	ax2.set_ylim([np.log10(drmin), 0.0])
 
 
 	ax2.xaxis.set_minor_locator(AutoMinorLocator())	
@@ -907,7 +1106,7 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  ten
 	ax1.yaxis.set_major_locator(mticker.LogLocator(numticks=999))
 	ax1.yaxis.set_minor_locator(mticker.LogLocator(numticks=999, subs=(.2, .4, .6, .8)))
 	ax1.grid(which='major', color='gray', linestyle=':')
-	ax1.legend(loc='best', fontsize=10)
+	ax1.legend(loc='best', fontsize=8)
 
 
 	# Adjust layout to remove white space between
@@ -918,8 +1117,6 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  ten
 	# Show the plot
 	plt.show()
 
-
-	#tencs_splt, drence_splt, istar_splt
 
 	ikeyplot = []
 	print(istar_splt)
@@ -951,7 +1148,8 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  ten
 		plt.scatter(r[ikey, 0], r[ikey, 1], label=f'\#%d: $m_* = %.2lf \, M_\odot$'%(ikey, m[ikey]),facecolor='None', edgecolor=CB_color_cycle[ienc%len(CB_color_cycle)],  marker=marker, s=60)
 		ienc+=1
 	
-	plt.scatter(r[ikeyplot_str, 0], r[ikeyplot_str, 1], color='None', edgecolor='r',  marker='o', s=150, label='$-\Delta R_\mathrm{out}/R_\mathrm{out} >0.1$')
+	if len(ikeyplot_str)>0:
+		plt.scatter(r[ikeyplot_str, 0], r[ikeyplot_str, 1], color='None', edgecolor='r',  marker='o', s=150, label='$-\Delta R_\mathrm{out}/R_\mathrm{out} >0.1$')
 	
 
 	plt.xlabel('$x$ Position [pc]')
@@ -966,7 +1164,7 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  ten
 
 	ikey_ms = []
 	for iist, ist in enumerate(istar_splt):
-		if np.any(tencs_splt[iist]>tplot):
+		if np.any(tencs_splt[iist]>0.5):
 			ikey_ms.append(ist)
 
 	mencs = m[ikey_ms]
@@ -974,13 +1172,22 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  ten
 	# Calculate the CDF for mencs
 	mencs_cdf = np.cumsum(np.ones(len(mencs))) / float(len(mencs))
 	mall_cdf = np.cumsum(np.ones(len(mall))) / float(len(mall))
+	
+	mencs_cdf = np.append(np.array([0.0]), mencs_cdf)
+	mall_cdf = np.append(np.array([0.0]), mall_cdf)
+	
+	
+	mall_srt = np.append(np.array([np.amin(mall)]), np.sort(mall))
+	menc_srt = np.append(np.array([np.amin(mencs)]), np.sort(mencs))
 
 	# Plotting
 	fig, ax = plt.subplots(figsize=(5, 4))
 
 	# Plot imf_cdf as a step function
-	plt.step(np.sort(mall), mall_cdf, color='k', linewidth=1, label='All stars $m_*>0.08 \, M_\odot$')
-	plt.step(np.sort(mencs), mencs_cdf, color='r', linewidth=1, label='$-\Delta R_\mathrm{out}/R_\mathrm{out}>0.01$, 1-3 Myr')
+	print(mencs)
+	plt.step(mall_srt, mall_cdf, color='k', linewidth=1, label='All stars $m_*>0.08 \, M_\odot$')
+	plt.step(menc_srt, mencs_cdf, color='r', linewidth=1, label='$-\Delta R_\mathrm{out}/R_\mathrm{out}>10^{%d}$, $>0.5$ Myr'%(np.log10(drmin)))
+	print(np.sort(mencs), mencs_cdf)
 
 
 
@@ -1012,16 +1219,23 @@ def disc_evolution(simulation, nt=10000, rinit=100.0, tplot=1.0,dtplot=0.1,  ten
 
 	# Perform KS test
 	ks_statistic, ks_p_value = ss.kstest(mencs, mall)
-	print(f"KS Statistic: {ks_statistic}")
-	print(f"P-value: {ks_p_value}")
+	print(f"KS Statistic (sim, sim enc): {ks_statistic}")
+	print(f"P-value (sim, sim enc): {ks_p_value}")
 
+
+
+	ks_statistic, ks_p_value = ss.kstest(mencs, np.array([1.42, 0.75, 0.44, 1.3]))
+	print(f"KS Statistic (obs, sim enc): {ks_statistic}")
+	print(f"P-value (obs, sim enc): {ks_p_value}")
+	
+	
 	plt.xscale('log')
 	plt.xlim([mmin, 3.0])
 	plt.ylim([0.0, 1.0])
 	# Add labels and title
 	plt.xlabel('Mass: $m$ [$M_\odot$]')
 	plt.ylabel('Fraction of stars with mass $m_* <m$')
-	plt.legend(loc='center right')
+	plt.legend(loc='center right', fontsize=8)
 
 	# Show ticks on all sides
 	plt.tick_params(axis='both', which='both', direction='in', top=True, right=True)
@@ -6280,8 +6494,10 @@ def plot_radii(simulation, agas=1.0, Mgas=1.0, nsubset=1000, axtext=None, axhmr=
 	iout = ~iin
 
 	rsort, mcum, hmr = make_mcum(rmag, m)
-	rsort_in, mcum_in, hmr_in = make_mcum(rmag[:,iin], m[iin])
-	rsort_out, mcum_out, hmr_out = make_mcum(rmag[:,iout], m[iout])
+	if np.sum(iin)>0.0:
+		rsort_in, mcum_in, hmr_in = make_mcum(rmag[:,iin], m[iin])
+	if np.sum(iout)>0.0:
+		rsort_out, mcum_out, hmr_out = make_mcum(rmag[:,iout], m[iout])
 
 	ihm = np.argmin(np.absolute(mcum-0.5), axis=1)
 	# Create a ScalarMappable object for the colormap
@@ -6322,8 +6538,10 @@ def plot_radii(simulation, agas=1.0, Mgas=1.0, nsubset=1000, axtext=None, axhmr=
 		fig1,axhmr = plt.subplots(figsize=(5.,4.))
 		savefig1=True
 	axhmr.plot(t, hmr, label='All')
-	axhmr.plot(t, hmr_in, label='$r_0 < a_\mathrm{gas}$')
-	axhmr.plot(t, hmr_out, label='$r_0 > a_\mathrm{gas}$')
+	if np.sum(iin)>0.0:
+		axhmr.plot(t, hmr_in, label='$r_0 < a_\mathrm{gas}$')
+	if np.sum(iout)>0.0:
+		axhmr.plot(t, hmr_out, label='$r_0 > a_\mathrm{gas}$')
 	axhmr.set_ylabel('Half-mass radius: $R_\mathrm{hm}$ [pc]')
 	axhmr.set_xlabel('Time: $t$ [Myr]')
 	axhmr.set_yscale('log')

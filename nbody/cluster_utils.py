@@ -28,24 +28,25 @@ def get_nbody_units(ms_Msol, rs_pc, vs_kms):
 	#M_units in SI is easy
 	m_units = np.sum(ms)
 	
+	
 	#Now compute potential with G=1:
-	#potG1 = cc.stellar_potential(rs, ms)
+	if len(ms)<7e3:
+		potG1 = cc.stellar_potential(rs, ms)
+	else:
+		rsmag = np.linalg.norm(rs, axis=-1 )
+		potG1 = -3.*np.pi*np.sum(ms)**2 / (np.median(np.absolute(rsmag))*1.3) /32.0
 	
 	#Multiply by G in SI
 	#KE= cc.total_kinetic(vs, ms)
 	#v_units = np.sqrt((4./m_units)*(KE - np.absolute(pot)))
 	#r_units = G_si*m_units/v_units 
 
-	rsmag = np.linalg.norm(rs, axis=-1 )
-
-	potG1 = -3.*np.pi*np.sum(ms)**2 / (np.median(np.absolute(rsmag))*1.3) /32.0
 	pot = potG1*G_si
 	
 	r_units = G_si*np.sum(ms)**2 / np.absolute(pot)
 
 	
 	#Now compute velocity units to give E=1/4
-	
 	
 	t_units = 1./np.sqrt(G_si*m_units/np.power(r_units, 3))
 

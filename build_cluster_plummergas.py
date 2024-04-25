@@ -158,14 +158,14 @@ if __name__=='__main__':
 
 	#texp = 2.0
 	trem=0.0
-	alphas = np.array([0.1, 0.2])
-	betas = np.array([0.2, 0.5])
-	gammas = np.array([0.2, 1.0, 5.0])
+	alphas = np.array([0.2, 0.5, 1.0])
+	betas = np.array([0.2, 0.5, 1.0])
+	gammas = np.array([0.2, 1.0, 2.0])
 	num_rows = len(alphas)
 	num_cols = len(betas)
 
 
-	figsize = (6, 6)  
+	figsize = (6*(num_cols/2.), 6*(num_rows/2.))  
 
 	homdir = os.getcwd()
 	for ig, gamma in enumerate(gammas):
@@ -238,7 +238,7 @@ if __name__=='__main__':
 				nbins0= 0
 
 
-				sim = nbi.nbody6_cluster(rs.T, vs.T, ms,  outname='clustersim', dtsnap_Myr =10.0, \
+				sim = nbi.nbody6_cluster(rs.T, vs.T, ms,  outname='clustersim', dtsnap_Myr =5.0, \
 				tend_Myr = tend, gasparams=gparams, etai=0.05, etar=0.05, etau=0.05, dtmin_Myr=1e-5, \
 				rmin_pc=1e-5,dtjacc_Myr=0.1, load=True, ctype='smooth', force_incomp = False, \
 				rtrunc=50.0, nbin0=nbins0, aclose_au=200.0)

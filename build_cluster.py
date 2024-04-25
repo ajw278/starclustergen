@@ -48,7 +48,7 @@ delta_logP = 0.7
 
 
 sv0 = 10.**0.21
-p = 0.65
+p = 0.5
 r0 = 1.0
 
 
@@ -56,8 +56,15 @@ r0 = r0*deg2rad*distance
 sv0 *= mas2rad*distance*pc2cm/year2s
 
 no_hard_edge=True
-minlogP = 4.5
-maxlogP = 8.5
+minlogP = 5.0
+maxlogP = 8.0
+
+minsma_wb = np.log10(1600.)
+maxsma_wb = np.log10(5e4) #50 000 au for 0.5 solar mass star -- Joncour et al.
+#minsma_wb = 1600.
+#maxsma_wb = 2e4 #50 000 au for 0.5 solar mass star -- Joncour et al.
+#WB fraction 1
+frac_wb  = 0.5
 
 # Define the binary fraction functions
 def f_logP_lt_1(M1):
@@ -88,7 +95,19 @@ def binary_fraction(logP,  M1):
         return f_logP_5_5(M1) #* np.exp(-0.3 * (logP - 5.5))
     else:
         return 0.0
-    
+        
+def gen_wb_sma(nstars, expon=0.5):
+	p1 = np.random.uniform(size=nstars)
+	p2 = np.random.uniform(size=nstars)
+	
+	factor = 1./(maxsma_wb**(1.+expon)-minsma_wb**(1.+expon))
+	logsma = minsma_wb + p2*(maxsma_wb-minsma_wb)
+	sma = 10.**logsma
+	
+	#sma = ((p2/factor)+minsma_wb**(1.+expon))**(1./(1.+expon))
+	sma[p1>frac_wb] = -1.0
+	return sma
+
 def get_q_func(gamma1=0.4, gamma2=-0.7, Ftwin=0.10):
     qsp = np.linspace(0.1,1., 1000)
     psp = qsp**gamma1
@@ -229,8 +248,8 @@ def get_imf_icdf():
 
 
 #Assign masses to stellar positions
-def assign_masses(rstars):
-    u = np.random.uniform(size=rstars.shape[-1])
+def assign_masses(nstars):
+    u = np.random.uniform(size=nstars)
     icdf =  get_imf_icdf()
     mstars = icdf(u)
     return mstars
@@ -274,6 +293,42 @@ def generate_binary_population(mstars, mmin=0.01):
     
 
     return binary_flags, logP_companions, q_companions, e_companions
+   
+def generate_wb_population(mstars, rstars, vstars):
+	nstars = len(mstars)
+	atmp = gen_wb_sma(nstars)
+	
+	nwb = np.sum(atmp>0.0)
+	iwb = atmp>0.0
+	ms_s = mstars[atmp>0.0]
+	
+	e_s = np.random.uniform(size=len(ms_s))*0.9
+	a_s = atmp[atmp>0.0]
+	
+	ms2_s = assign_masses(int(np.sum(atmp>0.0)))
+	q_s = ms2_s/ms_s
+	ms_s *= Msol2g
+	a_s *= au2cm 
+	
+	xb_s, vb_s = gbr.gen_binpop(ms_s, q_s, a_s, e_s, centre_primary=True)
+	
+	xb_s /= pc2cm
+	xmag = np.linalg.norm(xb_s, axis=-1)
+	rmag = np.linalg.norm(rstars, axis=0)
+	vbmag = np.linalg.norm(vb_s, axis=-1)
+	vmag = np.linalg.norm(vstars, axis=0)
+	
+	vbins = vb_s.T + vstars[:, atmp>0.0]
+	rbins = xb_s.T + rstars[:, atmp>0.0]
+	
+	mall = np.append(mstars, ms2_s, axis=-1)
+	vall = np.append(vstars, vbins, axis=-1)
+	rall = np.append(rstars, rbins, axis=-1)
+	
+	
+	return mall, rall, vall
+		
+		
 
 def generate_binary_pv(ms, bf, logP, q, e):
     iss = bf==1
@@ -527,7 +582,7 @@ if __name__=='__main__':
         istars = np.arange(rs.shape[1]) 
         #istars = select_istars(rs, 30.0, sharpness=10.0)
 
-        nobs = 500
+        nobs = 400/(1.+frac_wb)
         mlim =0.08
         imf_cdf = get_imf_cdf()
 
@@ -538,23 +593,32 @@ if __name__=='__main__':
         print('Fraction of stars below this threshold mass: %.2E'%fnd)
         print('Assumed number of detected stars: %d '%nobs)
         print('Assumed total stars: %d '%ntot)
-
         istars = np.random.choice(istars, size=ntot, replace=False)
         rs = rs[:, istars]
         vs = vgf.velocity_gen(rs, r0=r0, p=p, sv0=sv0)
-
+        print(vs.shape)
+        vmed = np.median(vs, axis=-1)
+        rmed = np.median(rs, axis=-1)
+        vs -= (1.05*vmed)[:, np.newaxis]
+        rs -= (1.05*rmed)[:, np.newaxis]
         
         #plot_pairs(rs)
-        ms = assign_masses(rs)
+        ms = assign_masses(rs.shape[-1])
+        
+        ms, rs, vs = generate_wb_population(ms, rs, vs)
+        
+        print('Total number of stars with wide binaries: ', rs.shape[-1])
+        
         bf, logP, q, e = generate_binary_population(ms)
         xb, vb = generate_binary_pv(ms, bf, logP, q, e)
         #cp.binary_props(bf, ms, logP, q, e)
 
         rs_all, vs_all, ms_all = add_binaries(rs,  ms, bf, xb/pc2cm, vb, q, vs=vs)
+        
 
         print('Total stars with binaries:', len(rs_all[0]))
         print('Binary fraction:', np.sum(bf)/float(len(ms)))
-
+        
         imf_func = get_kroupa_imf()
 
 
@@ -575,7 +639,6 @@ if __name__=='__main__':
         ax.tick_params(which='both', left=True, right=True, top=True, bottom=True)
         ax.legend()
         plt.show()
-        exit()
 
         np.save('rstars_wbin.npy', rs_all)
         
@@ -584,7 +647,6 @@ if __name__=='__main__':
         plot_pairs(rs_all)
 
         cp.plot_dvNN(rs_all.T, vs_all.T,ndim=3, r0=r0, p=p, sv0=sv0)
-
         np.save('sim_ics_bins', np.array([bf, logP, q, e]))
         np.save('sim_ics_r', rs_all)
         np.save('sim_ics_v', vs_all)
@@ -616,7 +678,7 @@ if __name__=='__main__':
     M1_mesh, logP_mesh = np.meshgrid(M1_values, logP_values)
 
     binary_fraction_values = np.vectorize(binary_fraction)(logP_mesh, M1_mesh)
-
+    
     # Plotting
     fig, ax = plt.subplots(figsize=(5, 4))
     pcol = plt.pcolormesh(M1_mesh, logP_mesh, np.log10(binary_fraction_values), cmap='bone', shading='auto')
@@ -634,7 +696,6 @@ if __name__=='__main__':
     plt.ylim([minlogP, maxlogP])
     plt.savefig('binary_dist.png', bbox_inches='tight', format='png')
     plt.show()
-    exit()
 
     msp = np.logspace(-2.3, 2, 1000)
     mbins = np.linspace(-2.3, 1.6, 14)
@@ -652,7 +713,7 @@ if __name__=='__main__':
 
 
     plt.yscale('log')
-    plt.xlim([-2.3, 1.6])
+    plt.xlim([-2.0, 1.0])
     plt.ylim([0.5, 300.0])
     plt.xlabel('log. Stellar mass: $\log m_*$ [$M_\odot$]')
     plt.ylabel('Number of stars')
@@ -661,26 +722,32 @@ if __name__=='__main__':
     plt.savefig('model_mstars.pdf', format='pdf', bbox_inches='tight')
     plt.show()
 
-    exit() """
+    exit()"""
+    
 
-    sim = nbi.nbody6_cluster(rs_all.T, vs_all.T, ms_all,  outname='clustersim', dtsnap_Myr =0.0001, \
+    sim = nbi.nbody6_cluster(rs_all.T, vs_all.T, ms_all,  outname='clustersim', dtsnap_Myr =0.001, \
                 tend_Myr = 3.0, gasparams=None, etai=0.005, etar=0.005, etau=0.01, dtmin_Myr=1e-8, \
-                rmin_pc=1e-8,dtjacc_Myr=0.05, load=True, ctype='smooth', force_incomp = False, \
-                rtrunc=50.0, nbin0=nbins0, aclose_au=200.0)
+                rmin_pc=1e-8,dtjacc_Myr=0.1, load=True, ctype='smooth', force_incomp = False, \
+                rtrunc=50.0, nbin0=nbins0, aclose_au=1000.0)
     #sim.store_arrays(reread=True)
+    
     sim.evolve(reread=False)
-
-
-    cp.plot_dvNN_fromsim(sim, time=1.0, r0=r0, p=p, sv0=sv0)
+    
+    
+    #cp.plot_corrfuncs(sim, time=1.0, rsingle=0.001, ndim=2)
+    #cp.plot_dvNN_fromsim(sim, time=0.0, r0=r0, p=p, sv0=sv0)
+    #enchist = cp.encounter_analysis(sim)
+    #cp.plot_dvNN_fromsim(sim, time=1.0, r0=r0, p=p, sv0=sv0)
+    cp.disc_evolution(sim, nt=10000, rinit='mstar', tevol=8.41)#13.4 #28.5
     cp.pairwise_analysis(sim, ndim=2)
-    #exit()
     #cp.plot_3dpos(sim)
+    #exit()
+    #
     #enchist = cp.encounter_analysis(sim)
     #exit()
     #cp.encounter_analysis_binaries(sim)
     #irand = np.random.choice(np.arange(1000), size=10)
     #cp.compare_encanalysis(sim, irand)
-    cp.disc_evolution(sim, nt=10000, rinit=100.0)
 
     #sim = rb.setupSimulation(rs_all, vs_all*1e5*1e6*year2s/pc2cm, ms_all, units=('Myr', 'pc', 'Msun'))
     #sim.integrate(3.0)

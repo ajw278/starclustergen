@@ -51,7 +51,13 @@ class nbody6_cluster:
 			self.n= len(mstars_msol)
 			self.nbin0 = nbin0
 			
+			print(vstars_kms)
+			print(rstars_pc)
+			print(mstars_msol)
+			
 			rstars, vstars, mstars, runit, tunit, munit = cu.get_nbody_units(mstars_msol, rstars_pc, vstars_kms)
+			
+			
 			
 			aclose_nb = aclose_au/m2au/runit
 			
